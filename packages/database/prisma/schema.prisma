@@ -1,0 +1,442 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Business {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  location        String?
+  socialLinks     Json     @default("{}")
+  settings        Json     @default("{}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  services             Service[]
+  campaigns            Campaign[]
+  creatives            Creative[]
+  campaignCreatives    CampaignCreative[]
+  metaAdAccounts       MetaAdAccount[]
+  metaEntityMappings   MetaEntityMapping[]
+  adMetrics            AdMetricDaily[]
+  trackingEvents       TrackingEvent[]
+  conversions          Conversion[]
+  experiments          Experiment[]
+  insights             Insight[]
+  recommendations      OptimizationRecommendation[]
+  decisionLog          DecisionLogEntry[]
+  externalAppointments ExternalAppointment[]
+  serviceMappings      EasyAppointmentsServiceMap[]
+
+  @@index([name])
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  businessId  String
+  name        String
+  description String?
+  price       Decimal  @db.Decimal(12, 2)
+  currency    String   @default("CLP")
+  duration    Int?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  business            Business                    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  campaigns           Campaign[]
+  conversions         Conversion[]
+  externalAppointments ExternalAppointment[]
+  externalServiceMaps EasyAppointmentsServiceMap[]
+
+  @@unique([businessId, name])
+  @@index([businessId])
+}
+
+model Campaign {
+  id             String         @id @default(cuid())
+  businessId     String
+  serviceId      String?
+  name           String
+  objective      String
+  status         CampaignStatus @default(DRAFT)
+  pausedAt       DateTime?
+  startDate      DateTime?
+  endDate        DateTime?
+  dailyBudget    Decimal?       @db.Decimal(12, 2)
+  lifetimeBudget Decimal?       @db.Decimal(12, 2)
+  metaCampaignId String?
+  notes          String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  business           Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  service            Service?             @relation(fields: [serviceId], references: [id])
+  campaignCreatives  CampaignCreative[]
+  metaEntityMappings MetaEntityMapping[]
+  metrics            AdMetricDaily[]
+  conversions        Conversion[]
+  experiments        Experiment[]
+
+  @@unique([businessId, metaCampaignId])
+  @@index([businessId])
+  @@index([businessId, status])
+  @@index([serviceId])
+}
+
+enum CampaignStatus {
+  DRAFT
+  PAUSED
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+model Creative {
+  id             String   @id @default(cuid())
+  businessId     String
+  name           String
+  format         String
+  primaryText    String
+  headline       String
+  description    String?
+  callToAction   String
+  imageUrl       String?
+  metaCreativeId String?
+  isAiGenerated  Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  business           Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  campaignCreatives  CampaignCreative[]
+  metaEntityMappings MetaEntityMapping[]
+  conversions        Conversion[]
+  experimentVariants ExperimentVariant[]
+
+  @@unique([businessId, metaCreativeId])
+  @@index([businessId])
+}
+
+model CampaignCreative {
+  id              String   @id @default(cuid())
+  businessId      String
+  campaignId      String
+  creativeId      String
+  attributionCode String   @unique
+  isControl       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  business          Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  campaign          Campaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  creative          Creative           @relation(fields: [creativeId], references: [id], onDelete: Cascade)
+  metrics           AdMetricDaily[]
+  conversions       Conversion[]
+  experimentVariants ExperimentVariant[]
+
+  @@unique([campaignId, creativeId])
+  @@index([businessId])
+  @@index([creativeId])
+  @@index([businessId, campaignId])
+}
+
+model MetaAdAccount {
+  id            String   @id @default(cuid())
+  businessId    String
+  metaAccountId String
+  name          String
+  currency      String   @default("CLP")
+  timezone      String   @default("America/Santiago")
+  createdAt     DateTime @default(now())
+
+  business Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  mappings MetaEntityMapping[]
+
+  @@unique([businessId, metaAccountId])
+}
+
+model MetaEntityMapping {
+  id          String        @id @default(cuid())
+  businessId  String
+  adAccountId String?
+  entityType  MetaEntityType
+  metaId      String
+  campaignId  String?
+  creativeId  String?
+  createdAt   DateTime      @default(now())
+
+  business   Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  adAccount  MetaAdAccount? @relation(fields: [adAccountId], references: [id])
+  campaign   Campaign?  @relation(fields: [campaignId], references: [id])
+  creative   Creative?  @relation(fields: [creativeId], references: [id])
+
+  @@unique([entityType, metaId])
+  @@index([businessId])
+  @@index([adAccountId])
+  @@index([campaignId])
+  @@index([creativeId])
+}
+
+enum MetaEntityType {
+  CAMPAIGN
+  ADSET
+  AD
+  CREATIVE
+}
+
+model AdMetricDaily {
+  id                 String   @id @default(cuid())
+  businessId         String
+  campaignId         String
+  campaignCreativeId String?
+  date               DateTime @db.Date
+  impressions        Int      @default(0)
+  reach              Int      @default(0)
+  clicks             Int      @default(0)
+  spend              Decimal  @db.Decimal(12, 2) @default(0)
+  leads              Int      @default(0)
+  createdAt          DateTime @default(now())
+
+  business         Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  campaign         Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignCreative CampaignCreative? @relation(fields: [campaignCreativeId], references: [id])
+
+  @@unique([campaignId, campaignCreativeId, date])
+  @@index([businessId, date])
+  @@index([campaignCreativeId])
+}
+
+model TrackingEvent {
+  id                 String   @id @default(cuid())
+  businessId         String
+  eventType          TrackingEventType
+  eventId            String
+  source             String?
+  medium             String?
+  campaign           String?
+  utmCampaignId      String?
+  utmCampaignCreativeId String?
+  occurredAt         DateTime @default(now())
+  payload            Json     @default("{}")
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, eventType, eventId])
+  @@index([businessId, occurredAt])
+}
+
+enum TrackingEventType {
+  CLICK
+  VISIT
+  WHATSAPP_OPEN
+  FORM_SUBMIT
+}
+
+model Conversion {
+  id                     String           @id @default(cuid())
+  businessId             String
+  campaignId             String?
+  creativeId             String?
+  campaignCreativeId     String?
+  serviceId              String?
+  attributionCode        String?
+  status                 ConversionStatus @default(PENDING)
+  amount                 Decimal?         @db.Decimal(12, 2)
+  currency               String           @default("CLP")
+  contactRef             String?
+  notes                  String?
+  externalAppointmentId  String?
+  occurredAt             DateTime         @default(now())
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  business            Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  campaign            Campaign?            @relation(fields: [campaignId], references: [id])
+  creative            Creative?            @relation(fields: [creativeId], references: [id])
+  campaignCreative    CampaignCreative?    @relation(fields: [campaignCreativeId], references: [id])
+  service             Service?             @relation(fields: [serviceId], references: [id])
+  externalAppointment ExternalAppointment? @relation(fields: [externalAppointmentId], references: [id])
+
+  @@unique([businessId, externalAppointmentId])
+  @@index([businessId, occurredAt])
+  @@index([businessId, status])
+  @@index([campaignId])
+  @@index([creativeId])
+  @@index([campaignCreativeId])
+  @@index([serviceId])
+}
+
+enum ConversionStatus {
+  PENDING
+  DEPOSIT_CONFIRMED
+  ATTENDED
+  CANCELLED
+  NO_SHOW
+}
+
+model Experiment {
+  id          String            @id @default(cuid())
+  businessId  String
+  campaignId  String
+  name        String
+  hypothesis  String
+  primaryKpi  String
+  status      ExperimentStatus  @default(RUNNING)
+  startedAt   DateTime          @default(now())
+  endedAt     DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  business Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  campaign Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  variants ExperimentVariant[]
+  insights Insight[]
+
+  @@index([businessId])
+  @@index([campaignId])
+}
+
+enum ExperimentStatus {
+  RUNNING
+  COMPLETED
+  CANCELLED
+}
+
+model ExperimentVariant {
+  id                 String   @id @default(cuid())
+  experimentId       String
+  campaignCreativeId String
+  creativeId         String
+  isControl          Boolean  @default(false)
+  createdAt          DateTime @default(now())
+
+  experiment       Experiment       @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  campaignCreative CampaignCreative @relation(fields: [campaignCreativeId], references: [id])
+  creative         Creative         @relation(fields: [creativeId], references: [id])
+
+  @@unique([experimentId, campaignCreativeId])
+  @@index([campaignCreativeId])
+  @@index([creativeId])
+}
+
+model Insight {
+  id           String         @id @default(cuid())
+  businessId   String
+  experimentId String?
+  category     String
+  severity     InsightSeverity @default(INFO)
+  title        String
+  description  String
+  evidence     Json           @default("{}")
+  createdAt    DateTime       @default(now())
+
+  business   Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  experiment Experiment? @relation(fields: [experimentId], references: [id])
+
+  @@index([businessId, createdAt])
+  @@index([experimentId])
+}
+
+enum InsightSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+model OptimizationRecommendation {
+  id            String   @id @default(cuid())
+  businessId    String
+  category      String
+  title         String
+  rationale     String
+  impact        String
+  status        RecommendationStatus @default(PENDING)
+  decisionLogId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  business    Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  decisionLog DecisionLogEntry? @relation(fields: [decisionLogId], references: [id])
+
+  @@index([businessId, status])
+  @@index([decisionLogId])
+}
+
+enum RecommendationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  APPLIED
+}
+
+model DecisionLogEntry {
+  id             String   @id @default(cuid())
+  businessId     String
+  title          String
+  rationale      String
+  expectedImpact String?
+  outcome        String?
+  decidedAt      DateTime @default(now())
+  evaluatedAt    DateTime?
+  createdAt      DateTime @default(now())
+
+  business        Business                       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  recommendations OptimizationRecommendation[]
+
+  @@index([businessId, decidedAt])
+}
+
+model ExternalAppointment {
+  id                    String           @id @default(cuid())
+  businessId            String
+  serviceId             String?
+  externalAppointmentId BigInt
+  externalCustomerId    BigInt?
+  providerId            Int?
+  scheduledStart        DateTime
+  scheduledEnd          DateTime
+  appointmentStatus     String
+  notesRaw              String?
+  attributionCode       String?
+  campaignId            String?
+  creativeId            String?
+  campaignCreativeId    String?
+  depositConfirmed      Boolean          @default(false)
+  depositAmount         Decimal?         @db.Decimal(12, 2)
+  depositCurrency       String?
+  outcome               ConversionStatus?
+  finalRevenue          Decimal?         @db.Decimal(12, 2)
+  finalRevenueCurrency  String?
+  rawPayload            Json             @default("{}")
+  syncedAt              DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  business    Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  service     Service?     @relation(fields: [serviceId], references: [id])
+  conversion  Conversion[]
+
+  @@unique([businessId, externalAppointmentId])
+  @@index([businessId, scheduledStart])
+  @@index([attributionCode])
+  @@index([serviceId])
+}
+
+model EasyAppointmentsServiceMap {
+  id               String   @id @default(cuid())
+  businessId       String
+  externalServiceId Int
+  serviceId        String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  service  Service  @relation(fields: [serviceId], references: [id])
+
+  @@unique([businessId, externalServiceId])
+  @@index([serviceId])
+}

@@ -1,0 +1,22 @@
+{
+  "data": [
+    {
+      "date": "2026-09-10",
+      "campaignId": "cmp-001",
+      "adId": "ad-001",
+      "impressions": 4200,
+      "clicks": 380,
+      "spend": 4500,
+      "leads": 12
+    },
+    {
+      "date": "2026-09-11",
+      "campaignId": "cmp-001",
+      "adId": "ad-001",
+      "impressions": 5000,
+      "clicks": 410,
+      "spend": 4800,
+      "leads": 14
+    }
+  ]
+}

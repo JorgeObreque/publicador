@@ -1,0 +1,20 @@
+{
+  "campaigns": [
+    {
+      "id": "cmp-001",
+      "name": "Balayage Otoño",
+      "objective": "whatsapp",
+      "status": "PAUSED",
+      "dailyBudget": 5000
+    }
+  ],
+  "ads": [
+    {
+      "id": "ad-001",
+      "campaignId": "cmp-001",
+      "creativeId": "cr-001",
+      "name": "Balayage A",
+      "status": "PAUSED"
+    }
+  ]
+}

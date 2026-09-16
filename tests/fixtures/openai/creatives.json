@@ -1,0 +1,16 @@
+{
+  "variants": [
+    {
+      "primaryText": "Balayage con acabado natural y caída suave.",
+      "headline": "Reserva tu balayage",
+      "description": "Agenda con seña desde $20.000.",
+      "callToAction": "WHATSAPP_MESSAGE"
+    },
+    {
+      "primaryText": "Color completo con diagnóstico gratuito.",
+      "headline": "Color para esta temporada",
+      "description": "Reserva en 60 segundos.",
+      "callToAction": "WHATSAPP_MESSAGE"
+    }
+  ]
+}

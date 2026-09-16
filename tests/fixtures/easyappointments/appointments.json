@@ -1,0 +1,14 @@
+{
+  "appointments": [
+    {
+      "id": 1,
+      "serviceId": 2,
+      "providerId": 6,
+      "customerId": 290,
+      "start": "2026-09-12 12:00:00",
+      "end": "2026-09-12 14:00:00",
+      "status": "Agendado",
+      "notes": "Hola, vengo del anuncio. ADS:CMP-001-A"
+    }
+  ]
+}

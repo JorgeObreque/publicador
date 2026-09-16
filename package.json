@@ -1,0 +1,34 @@
+{
+  "name": "publicador",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plataforma de campañas Meta con aprendizaje iterativo",
+  "packageManager": "pnpm@9.12.0",
+  "scripts": {
+    "dev": "pnpm --filter @publicador/api run start:dev",
+    "dev:web": "pnpm --filter @publicador/web run dev",
+    "build": "pnpm -r run build",
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm -r run typecheck",
+    "test:unit": "pnpm --filter @publicador/api test:unit && pnpm --filter @publicador/web test:unit",
+    "test:integration": "bash scripts/run-integration.sh",
+    "test:smoke": "pnpm test:integration",
+    "test:e2e": "pnpm --filter @publicador/database exec prisma migrate deploy && playwright test",
+    "test:coverage": "pnpm --filter @publicador/api test:coverage",
+    "test": "pnpm test:unit",
+    "test:all": "pnpm test:unit && pnpm test:integration && pnpm test:e2e",
+    "test:db:up": "docker compose -f docker-compose.test.yml up -d",
+    "test:db:down": "docker compose -f docker-compose.test.yml down -v",
+    "db:generate": "pnpm --filter @publicador/database run generate",
+    "db:migrate": "pnpm --filter @publicador/database run migrate",
+    "db:deploy": "pnpm --filter @publicador/database run migrate:deploy",
+    "db:reset": "pnpm --filter @publicador/database run reset",
+    "db:seed": "pnpm --filter @publicador/database run seed"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0"
+  }
+}
