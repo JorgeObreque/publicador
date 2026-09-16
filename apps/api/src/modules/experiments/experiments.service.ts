@@ -64,7 +64,7 @@ export class ExperimentsService {
     });
   }
 
-  async complete(id: string, outcome?: string) {
+  async complete(id: string, _outcome?: string) {
     const experiment = await this.findOne(id);
     return prisma.experiment.update({
       where: { id: experiment.id },

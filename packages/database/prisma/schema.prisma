@@ -207,6 +207,7 @@ model AdMetricDaily {
   campaignCreative CampaignCreative? @relation(fields: [campaignCreativeId], references: [id])
 
   @@unique([campaignId, campaignCreativeId, date])
+  @@unique([campaignId, date], map: "uniq_campaign_metric_per_day_no_creative")
   @@index([businessId, date])
   @@index([campaignCreativeId])
 }

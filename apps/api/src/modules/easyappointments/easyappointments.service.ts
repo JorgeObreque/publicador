@@ -120,6 +120,7 @@ export class EasyAppointmentsService {
         externalAppointmentId: BigInt(appt.id),
       },
     });
+    void existing;
 
     return prisma.externalAppointment.upsert({
       where: {

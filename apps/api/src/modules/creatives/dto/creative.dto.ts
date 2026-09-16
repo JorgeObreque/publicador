@@ -1,13 +1,18 @@
 import { z } from 'zod';
 
 export const createCreativeSchema = z.object({
-  name: z.string().min(1),
-  format: z.string().min(1),
-  primaryText: z.string().min(1),
-  headline: z.string().min(1),
-  description: z.string().optional(),
-  callToAction: z.string().min(1),
-  imageUrl: z.string().url().optional(),
+  name: z.string().trim().min(1).max(120),
+  format: z.string().trim().min(1).max(40),
+  primaryText: z.string().trim().min(1).max(2000),
+  headline: z.string().trim().min(1).max(80),
+  description: z.string().trim().max(2000).optional(),
+  callToAction: z.string().trim().min(1).max(40),
+  imageUrl: z
+    .string()
+    .trim()
+    .url({ message: 'imageUrl debe ser una URL válida' })
+    .max(2000)
+    .optional(),
   isAiGenerated: z.boolean().optional(),
 });
 

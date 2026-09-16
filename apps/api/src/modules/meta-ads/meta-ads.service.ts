@@ -74,7 +74,7 @@ export class MetaAdsService {
 
   async importMetrics(from: Date, to: Date) {
     const records = await this.source.fetchMetrics(from, to);
-    let upserts = 0;
+    let replaced = 0;
     for (const record of records) {
       const campaign = await prisma.campaign.findFirst({
         where: { businessId: this.businessId, metaCampaignId: record.metaCampaignId },
@@ -89,7 +89,21 @@ export class MetaAdsService {
             },
           })
         : null;
-      const date = new Date(Date.UTC(record.date.getUTCFullYear(), record.date.getUTCMonth(), record.date.getUTCDate()));
+      const date = new Date(
+        Date.UTC(record.date.getUTCFullYear(), record.date.getUTCMonth(), record.date.getUTCDate()),
+      );
+
+      const data = {
+        businessId: this.businessId,
+        campaignId: campaign.id,
+        campaignCreativeId: campaignCreative?.id,
+        date,
+        impressions: record.impressions,
+        clicks: record.clicks,
+        spend: new Prisma.Decimal(record.spend),
+        leads: record.leads,
+      };
+
       if (campaignCreative) {
         await prisma.adMetricDaily.upsert({
           where: {
@@ -100,21 +114,12 @@ export class MetaAdsService {
             },
           },
           update: {
-            impressions: { increment: record.impressions },
-            clicks: { increment: record.clicks },
-            spend: { increment: new Prisma.Decimal(record.spend) },
-            leads: { increment: record.leads },
-          },
-          create: {
-            businessId: this.businessId,
-            campaignId: campaign.id,
-            campaignCreativeId: campaignCreative.id,
-            date,
             impressions: record.impressions,
             clicks: record.clicks,
             spend: new Prisma.Decimal(record.spend),
             leads: record.leads,
           },
+          create: data,
         });
       } else {
         const existing = await prisma.adMetricDaily.findFirst({
@@ -124,28 +129,18 @@ export class MetaAdsService {
           await prisma.adMetricDaily.update({
             where: { id: existing.id },
             data: {
-              impressions: { increment: record.impressions },
-              clicks: { increment: record.clicks },
-              spend: { increment: new Prisma.Decimal(record.spend) },
-              leads: { increment: record.leads },
-            },
-          });
-        } else {
-          await prisma.adMetricDaily.create({
-            data: {
-              businessId: this.businessId,
-              campaignId: campaign.id,
-              date,
               impressions: record.impressions,
               clicks: record.clicks,
               spend: new Prisma.Decimal(record.spend),
               leads: record.leads,
             },
           });
+        } else {
+          await prisma.adMetricDaily.create({ data });
         }
       }
-      upserts += 1;
+      replaced += 1;
     }
-    return { upserts };
+    return { upserts: replaced };
   }
 }

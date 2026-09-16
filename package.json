@@ -12,8 +12,8 @@
     "typecheck": "pnpm -r run typecheck",
     "test:unit": "pnpm --filter @publicador/api test:unit && pnpm --filter @publicador/web test:unit",
     "test:integration": "bash scripts/run-integration.sh",
-    "test:smoke": "pnpm test:integration",
-    "test:e2e": "pnpm --filter @publicador/database exec prisma migrate deploy && playwright test",
+    "test:smoke": "bash scripts/run-smoke.sh",
+    "test:e2e": "playwright test",
     "test:coverage": "pnpm --filter @publicador/api test:coverage",
     "test": "pnpm test:unit",
     "test:all": "pnpm test:unit && pnpm test:integration && pnpm test:e2e",
@@ -29,6 +29,8 @@
     "node": ">=20.0.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.48.0"
+    "@playwright/test": "^1.48.0",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.0"
   }
 }
