@@ -5,6 +5,8 @@ describe('MetaGraphClient', () => {
     accessToken: 'token',
     apiVersion: 'v20.0',
     adAccountId: 'act_1',
+    accountTimezone: 'Pacific/Easter',
+    currency: 'CLP',
   };
 
   it('builds requests against graph.facebook.com', () => {

@@ -14,6 +14,8 @@ import { OptimizationModule } from './modules/optimization/optimization.module';
 import { InsightsModule } from './modules/insights/insights.module';
 import { DecisionLogModule } from './modules/decision-log/decision-log.module';
 import { EasyAppointmentsModule } from './modules/easyappointments/easyappointments.module';
+import { GoogleDriveModule } from './modules/google-drive/google-drive.module';
+import { MediaAssetModule } from './modules/media-asset/media-asset.module';
 import { JobsModule } from './jobs/jobs.module';
 import { HealthModule } from './modules/health/health.module';
 import { SerializersModule } from './shared/serializers/serializers.module';
@@ -34,6 +36,8 @@ import { SerializersModule } from './shared/serializers/serializers.module';
     InsightsModule,
     DecisionLogModule,
     EasyAppointmentsModule,
+    GoogleDriveModule,
+    MediaAssetModule,
     JobsModule,
     HealthModule,
     SerializersModule,

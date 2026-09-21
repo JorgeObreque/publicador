@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { createHmac } from 'node:crypto';
 
 export interface MetaClientConfig {
   accessToken: string;
@@ -6,6 +7,13 @@ export interface MetaClientConfig {
   adAccountId: string;
   appId?: string;
   appSecret?: string;
+  businessId?: string;
+  pageId?: string;
+  instagramAccountId?: string;
+  whatsappPhoneNumberId?: string;
+  whatsappNumber?: string;
+  accountTimezone: string;
+  currency: string;
 }
 
 export class MetaGraphClient {
@@ -15,10 +23,16 @@ export class MetaGraphClient {
     if (!config.accessToken) {
       throw new Error('META_ACCESS_TOKEN no configurado');
     }
+    const params: Record<string, string> = { access_token: config.accessToken };
+    if (config.appSecret) {
+      params.appsecret_proof = createHmac('sha256', config.appSecret)
+        .update(config.accessToken)
+        .digest('hex');
+    }
     this.http = axios.create({
       baseURL: `https://graph.facebook.com/${config.apiVersion}`,
       timeout: 30000,
-      params: { access_token: config.accessToken },
+      params,
     });
   }
 
@@ -34,5 +48,9 @@ export class MetaGraphClient {
 
   get adAccountId(): string {
     return this.config.adAccountId;
+  }
+
+  get settings(): Readonly<MetaClientConfig> {
+    return this.config;
   }
 }

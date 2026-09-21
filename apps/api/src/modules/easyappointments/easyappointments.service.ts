@@ -3,6 +3,7 @@ import { ConversionStatus, Prisma } from '@prisma/client';
 import { prisma } from '@publicador/database';
 import { BusinessContextResolver } from '../../shared/business-context/business-context.resolver';
 import { extractAttributionCode } from '../../shared/attribution/attribution-code';
+import { localDateTimeToUtc } from '../../shared/time/timezone';
 import { EasyAppointmentsHttpClient } from './easyappointments-http.client';
 import { FixtureEasyAppointmentsClient } from './fixture-easyappointments.client';
 import {
@@ -43,6 +44,10 @@ export class EasyAppointmentsService {
 
   private get businessId(): string {
     return this.businessContext.resolve().businessId;
+  }
+
+  private get businessTimezone(): string {
+    return process.env.BUSINESS_TIMEZONE ?? 'America/Santiago';
   }
 
   async syncAppointments(from: Date, to: Date) {
@@ -139,8 +144,8 @@ export class EasyAppointmentsService {
         serviceId: serviceMap?.serviceId,
         externalCustomerId: BigInt(appt.customerId),
         providerId: appt.providerId,
-        scheduledStart: new Date(appt.start.replace(' ', 'T')),
-        scheduledEnd: new Date(appt.end.replace(' ', 'T')),
+        scheduledStart: localDateTimeToUtc(appt.start, this.businessTimezone),
+        scheduledEnd: localDateTimeToUtc(appt.end, this.businessTimezone),
         rawPayload: appt as unknown as Prisma.JsonObject,
       },
       create: {
@@ -149,8 +154,8 @@ export class EasyAppointmentsService {
         externalCustomerId: BigInt(appt.customerId),
         providerId: appt.providerId,
         serviceId: serviceMap?.serviceId,
-        scheduledStart: new Date(appt.start.replace(' ', 'T')),
-        scheduledEnd: new Date(appt.end.replace(' ', 'T')),
+        scheduledStart: localDateTimeToUtc(appt.start, this.businessTimezone),
+        scheduledEnd: localDateTimeToUtc(appt.end, this.businessTimezone),
         appointmentStatus: appt.status,
         notesRaw: appt.notes,
         attributionCode: code,

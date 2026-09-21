@@ -29,6 +29,7 @@ describe('Campaign lifecycle (integration)', () => {
         primaryText: 'Balayage natural',
         headline: 'Reserva tu balayage',
         callToAction: 'WHATSAPP_MESSAGE',
+        imageUrl: 'https://example.com/balayage.jpg',
       })
       .expect(201);
 
@@ -52,7 +53,7 @@ describe('Campaign lifecycle (integration)', () => {
         {
           date: '2026-09-10',
           campaignId: 'cmp-meta-1',
-          adId: creative.body.metaCreativeId ?? creative.body.id,
+          adId: 'ad-001',
           impressions: 4200,
           clicks: 380,
           spend: 4500,
@@ -61,15 +62,34 @@ describe('Campaign lifecycle (integration)', () => {
       ],
     });
 
-    await request(app.getHttpServer())
+    const published = await request(app.getHttpServer())
       .post(`/api/v1/meta-ads/campaigns/${campaign.body.id}/publish-paused`)
       .expect(201);
+    expect(published.body).toMatchObject({
+      metaCampaignId: 'cmp-meta-1',
+      metaAdSetId: 'adset-001',
+      status: 'PAUSED',
+      creatives: [
+        {
+          metaCreativeId: 'creative-001',
+          metaAdId: 'ad-001',
+          status: 'PAUSED',
+        },
+      ],
+    });
+
+    const retried = await request(app.getHttpServer())
+      .post(`/api/v1/meta-ads/campaigns/${campaign.body.id}/publish-paused`)
+      .expect(201);
+    expect(retried.body.metaCampaignId).toBe(published.body.metaCampaignId);
+    expect(retried.body.metaAdSetId).toBe(published.body.metaAdSetId);
+    expect(retried.body.creatives[0].metaAdId).toBe(published.body.creatives[0].metaAdId);
 
     const imported = await request(app.getHttpServer())
       .post('/api/v1/meta-ads/metrics/import')
       .send({
-        from: new Date('2026-09-10T00:00:00Z').toISOString(),
-        to: new Date('2026-09-12T00:00:00Z').toISOString(),
+        from: '2026-09-10',
+        to: '2026-09-12',
       })
       .expect(201);
     expect(imported.body.upserts).toBe(1);

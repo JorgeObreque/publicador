@@ -22,6 +22,7 @@ model Business {
   campaigns            Campaign[]
   creatives            Creative[]
   campaignCreatives    CampaignCreative[]
+  mediaAssets          MediaAsset[]
   metaAdAccounts       MetaAdAccount[]
   metaEntityMappings   MetaEntityMapping[]
   adMetrics            AdMetricDaily[]
@@ -59,6 +60,55 @@ model Service {
   @@index([businessId])
 }
 
+model MediaAsset {
+  id                String          @id @default(cuid())
+  businessId        String
+  source            MediaAssetSource
+  kind              MediaAssetKind
+  externalFileId    String
+  externalFolderId  String?
+  externalFolderKey String?
+  externalLink      String?
+  name              String
+  mimeType          String
+  sizeBytes         Int
+  checksum          String?
+  width             Int?
+  height            Int?
+  durationSeconds   Int?
+  status            MediaAssetStatus @default(READY)
+  archivedAt        DateTime?
+  lastSyncedAt      DateTime        @default(now())
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  parentExternalFileId String?
+  externalLocalPath String?
+
+  business    Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  creatives   Creative[]
+
+  @@unique([businessId, source, externalFileId])
+  @@index([businessId])
+  @@index([businessId, kind])
+  @@index([businessId, status])
+}
+
+enum MediaAssetSource {
+  GOOGLE_DRIVE
+  URL
+}
+
+enum MediaAssetKind {
+  IMAGE
+  VIDEO
+}
+
+enum MediaAssetStatus {
+  READY
+  MISSING
+  ARCHIVED
+}
+
 model Campaign {
   id             String         @id @default(cuid())
   businessId     String
@@ -72,6 +122,13 @@ model Campaign {
   dailyBudget    Decimal?       @db.Decimal(12, 2)
   lifetimeBudget Decimal?       @db.Decimal(12, 2)
   metaCampaignId String?
+  metaAdSetId    String?
+  metaPublishFingerprint String?
+  metaPublishStatus MetaPublishStatus @default(DRAFT)
+  metaPublishAttemptId String?
+  metaPublishError String?
+  metaPublishStartedAt DateTime?
+  metaPublishedAt DateTime?
   notes          String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -85,9 +142,17 @@ model Campaign {
   experiments        Experiment[]
 
   @@unique([businessId, metaCampaignId])
+  @@unique([businessId, metaAdSetId])
   @@index([businessId])
   @@index([businessId, status])
   @@index([serviceId])
+}
+
+enum MetaPublishStatus {
+  DRAFT
+  PUBLISHING
+  PAUSED
+  FAILED
 }
 
 enum CampaignStatus {
@@ -108,12 +173,14 @@ model Creative {
   description    String?
   callToAction   String
   imageUrl       String?
+  mediaAssetId   String?
   metaCreativeId String?
   isAiGenerated  Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   business           Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  mediaAsset         MediaAsset?         @relation(fields: [mediaAssetId], references: [id], onDelete: SetNull)
   campaignCreatives  CampaignCreative[]
   metaEntityMappings MetaEntityMapping[]
   conversions        Conversion[]
@@ -121,6 +188,7 @@ model Creative {
 
   @@unique([businessId, metaCreativeId])
   @@index([businessId])
+  @@index([mediaAssetId])
 }
 
 model CampaignCreative {
@@ -130,6 +198,10 @@ model CampaignCreative {
   creativeId      String
   attributionCode String   @unique
   isControl       Boolean  @default(false)
+  metaCreativeId  String?
+  metaAdId        String?
+  metaPublishFingerprint String?
+  metaPublishedAt DateTime?
   createdAt       DateTime @default(now())
 
   business          Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
@@ -140,6 +212,8 @@ model CampaignCreative {
   experimentVariants ExperimentVariant[]
 
   @@unique([campaignId, creativeId])
+  @@unique([businessId, metaCreativeId])
+  @@unique([businessId, metaAdId])
   @@index([businessId])
   @@index([creativeId])
   @@index([businessId, campaignId])
@@ -151,7 +225,7 @@ model MetaAdAccount {
   metaAccountId String
   name          String
   currency      String   @default("CLP")
-  timezone      String   @default("America/Santiago")
+  timezone      String   @default("Pacific/Easter")
   createdAt     DateTime @default(now())
 
   business Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
@@ -204,7 +278,7 @@ model AdMetricDaily {
 
   business         Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
   campaign         Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  campaignCreative CampaignCreative? @relation(fields: [campaignCreativeId], references: [id])
+  campaignCreative CampaignCreative? @relation(fields: [campaignCreativeId], references: [id], onDelete: SetNull)
 
   @@unique([campaignId, campaignCreativeId, date])
   @@unique([campaignId, date], map: "uniq_campaign_metric_per_day_no_creative")
@@ -213,7 +287,7 @@ model AdMetricDaily {
 }
 
 model TrackingEvent {
-  id                 String   @id @default(cuid())
+  id                 String           @id @default(cuid())
   businessId         String
   eventType          TrackingEventType
   eventId            String
@@ -222,8 +296,8 @@ model TrackingEvent {
   campaign           String?
   utmCampaignId      String?
   utmCampaignCreativeId String?
-  occurredAt         DateTime @default(now())
-  payload            Json     @default("{}")
+  occurredAt         DateTime         @default(now())
+  payload            Json             @default("{}")
 
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 

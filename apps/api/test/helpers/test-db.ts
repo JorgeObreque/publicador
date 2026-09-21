@@ -25,6 +25,7 @@ export async function resetDatabase() {
   const validated = ensureTestEnvironment();
   void validated;
   await prisma.$transaction([
+    prisma.mediaAsset.deleteMany(),
     prisma.optimizationRecommendation.deleteMany(),
     prisma.decisionLogEntry.deleteMany(),
     prisma.insight.deleteMany(),

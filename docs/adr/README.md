@@ -15,3 +15,4 @@ Cada ADR documenta una decisión arquitectónica relevante, su contexto y consec
 | 0007 | Creativos asistidos por OpenAI | Aceptado |
 | 0008 | Sincronización por polling y no por webhooks | Aceptado |
 | 0009 | Estrategia de testing con Jest, smoke y Playwright | Aceptado |
+| 0010 | Zona horaria histórica de la cuenta Meta | Aceptado |

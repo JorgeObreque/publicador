@@ -25,7 +25,6 @@ async function bootstrap() {
   await app.listen(port);
   logger.log(`API escuchando en http://localhost:${port}/${prefix}`);
 }
-
 bootstrap().catch((err) => {
   console.error('Fallo al iniciar la API', err);
   process.exit(1);

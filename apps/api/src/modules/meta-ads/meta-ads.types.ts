@@ -1,9 +1,40 @@
 export interface MetaCampaignDraft {
   name: string;
-  objective: string;
-  status: 'PAUSED' | 'ACTIVE';
+  objective: 'OUTCOME_ENGAGEMENT';
+  existingId?: string;
+}
+
+export interface MetaAdSetDraft {
+  name: string;
+  campaignId: string;
   dailyBudget?: number;
-  specialAdCategories?: string[];
+  lifetimeBudget?: number;
+  startTime?: Date;
+  endTime?: Date;
+  existingId?: string;
+}
+
+export interface MetaCreativeDraft {
+  name: string;
+  primaryText: string;
+  headline: string;
+  description?: string;
+  imageUrl: string;
+  attributionCode: string;
+  existingId?: string;
+}
+
+export interface MetaAdDraft {
+  name: string;
+  adSetId: string;
+  creativeId: string;
+  existingId?: string;
+}
+
+export interface MetaRemoteRecord {
+  id: string;
+  name: string;
+  status?: string;
 }
 
 export interface MetaCampaignRecord {
@@ -13,17 +44,28 @@ export interface MetaCampaignRecord {
 }
 
 export interface MetaMetricRecord {
-  date: Date;
+  date: string;
   metaCampaignId: string;
-  metaCreativeId?: string;
+  metaAdId?: string;
   impressions: number;
   clicks: number;
   spend: number;
   leads: number;
 }
 
+export interface MetaPreflightResult {
+  accountId: string;
+  accountName: string;
+  currency: string;
+  timezone: string;
+}
+
 export interface MetaAdsSource {
-  ensurePausedCampaign(input: MetaCampaignDraft): Promise<MetaCampaignRecord>;
+  validateConfiguration(): Promise<MetaPreflightResult>;
+  ensurePausedCampaign(input: MetaCampaignDraft): Promise<MetaRemoteRecord>;
+  ensurePausedAdSet(input: MetaAdSetDraft): Promise<MetaRemoteRecord>;
+  ensureCreative(input: MetaCreativeDraft): Promise<MetaRemoteRecord>;
+  ensurePausedAd(input: MetaAdDraft): Promise<MetaRemoteRecord>;
   fetchCampaigns(): Promise<MetaCampaignRecord[]>;
-  fetchMetrics(from: Date, to: Date): Promise<MetaMetricRecord[]>;
+  fetchMetrics(from: string, to: string): Promise<MetaMetricRecord[]>;
 }
