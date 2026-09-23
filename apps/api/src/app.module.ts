@@ -5,6 +5,7 @@ import { APP_PREFIX } from './config/app.tokens';
 import { BusinessContextModule } from './shared/business-context/business-context.module';
 import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { CreativesModule } from './modules/creatives/creatives.module';
+import { ServicesModule } from './modules/services/services.module';
 import { MetaAdsModule } from './modules/meta-ads/meta-ads.module';
 import { TrackingModule } from './modules/tracking/tracking.module';
 import { ConversionsModule } from './modules/conversions/conversions.module';
@@ -27,6 +28,7 @@ import { SerializersModule } from './shared/serializers/serializers.module';
     BusinessContextModule,
     CampaignsModule,
     CreativesModule,
+    ServicesModule,
     MetaAdsModule,
     TrackingModule,
     ConversionsModule,

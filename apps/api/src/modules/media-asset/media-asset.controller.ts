@@ -1,11 +1,7 @@
 import 'reflect-metadata';
-import { Controller, Get, Param, Post, Query, BadRequestException, Res } from '@nestjs/common';
+import { Controller, Get, Param, Post, Res } from '@nestjs/common';
 import type { Response } from 'express';
-import { createReadStream, statSync } from 'node:fs';
-import { MediaAssetKind } from '@prisma/client';
 import { MediaAssetService } from './media-asset.service';
-
-const VALID_KINDS = new Set<MediaAssetKind>(['IMAGE', 'VIDEO']);
 
 @Controller('media-assets')
 export class MediaAssetController {
@@ -17,31 +13,26 @@ export class MediaAssetController {
   }
 
   @Get()
-  list(@Query('kind') kind?: string) {
-    if (kind && !VALID_KINDS.has(kind as MediaAssetKind)) {
-      throw new BadRequestException(`kind debe ser uno de: ${[...VALID_KINDS].join(', ')}`);
-    }
-    return this.mediaAssets.listAssets({ kind: kind as MediaAssetKind | undefined });
+  list() {
+    return this.mediaAssets.listAssets();
   }
 
-  @Get(':id/download')
-  describe(@Param('id') id: string) {
-    return this.mediaAssets.describeDownloadUrl(id);
+  @Get('images')
+  listImages() {
+    return this.mediaAssets.listImages();
   }
 
-  @Get(':id/file')
-  async stream(@Param('id') id: string, @Res({ passthrough: false }) res: Response) {
-    const asset = await this.mediaAssets.resolveFileStream(id);
+  @Get(':id/thumbnail')
+  async thumbnail(@Param('id') id: string, @Res({ passthrough: false }) res: Response) {
+    const asset = await this.mediaAssets.fetchThumbnailStream(id);
     if (!asset) {
-      throw new BadRequestException('MediaAsset sin archivo local disponible');
+      res.status(404).json({ message: 'MediaAsset no encontrado' });
+      return;
     }
-    const { localPath, mimeType, name } = asset;
-    const stat = statSync(localPath);
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Length', stat.size);
-    res.setHeader('Content-Disposition', `inline; filename="${name}"`);
-    const fileStream = createReadStream(localPath);
-    fileStream.pipe(res);
-    return new Promise<void>(() => undefined);
+    res.setHeader('Content-Type', asset.mimeType);
+    res.setHeader('Content-Length', asset.buffer.byteLength);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.setHeader('Content-Disposition', `inline; filename="${asset.name}"`);
+    res.status(200).end(asset.buffer);
   }
 }

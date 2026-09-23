@@ -3,6 +3,7 @@ import { ZodError } from 'zod';
 import { CampaignsService } from './campaigns.service';
 import {
   createCampaignSchema,
+  createCampaignWithCreativeSchema,
   updateCampaignSchema,
 } from './dto/campaign.dto';
 
@@ -23,6 +24,13 @@ export class CampaignsController {
   @Post()
   create(@Body() body: unknown) {
     return this.campaigns.create(this.parse(createCampaignSchema, body));
+  }
+
+  @Post('with-creative')
+  createWithCreative(@Body() body: unknown) {
+    return this.campaigns.createWithCreative(
+      this.parse(createCampaignWithCreativeSchema, body),
+    );
   }
 
   @Patch(':id')

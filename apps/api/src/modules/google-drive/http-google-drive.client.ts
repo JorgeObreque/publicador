@@ -99,6 +99,22 @@ export class HttpGoogleDriveClient implements GoogleDriveClient {
     return Buffer.from(response.data);
   }
 
+  async fetchThumbnail(file: GoogleDriveFile): Promise<Buffer> {
+    const request = await this.getRequest();
+    const meta = await request<{ thumbnailLink?: string; mimeType?: string }>({
+      url: `https://www.googleapis.com/drive/v3/files/${file.driveFileId}`,
+      params: { fields: 'thumbnailLink,mimeType', supportsAllDrives: 'true' },
+    });
+    if (!meta.data.thumbnailLink) {
+      throw new GoogleDriveNotFoundError(`miniatura de ${file.driveFileId}`);
+    }
+    const response = await request<ArrayBuffer>({
+      url: meta.data.thumbnailLink,
+      responseType: 'arraybuffer',
+    });
+    return Buffer.from(response.data);
+  }
+
   private async getRequest(): Promise<DriveRequest> {
     const client = await this.auth.getClient();
     return (client as unknown as { request: DriveRequest }).request.bind(client);

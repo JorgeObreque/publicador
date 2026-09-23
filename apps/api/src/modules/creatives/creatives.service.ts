@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { MediaAssetStatus } from '@prisma/client';
 import { prisma } from '@publicador/database';
 import { BusinessContextResolver } from '../../shared/business-context/business-context.resolver';
 import {
@@ -19,6 +20,7 @@ export class CreativesService {
   list() {
     return prisma.creative.findMany({
       where: { businessId: this.businessId },
+      include: { mediaAsset: true },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -26,12 +28,37 @@ export class CreativesService {
   async findOne(id: string) {
     const creative = await prisma.creative.findFirst({
       where: { id, businessId: this.businessId },
+      include: { mediaAsset: true },
     });
     if (!creative) throw new NotFoundException(`Creative ${id} not found`);
     return creative;
   }
 
-  create(input: CreateCreativeInput) {
+  async create(input: CreateCreativeInput) {
+    if (input.mediaAssetId) {
+      const asset = await prisma.mediaAsset.findFirst({
+        where: {
+          id: input.mediaAssetId,
+          businessId: this.businessId,
+          status: { not: MediaAssetStatus.ARCHIVED },
+        },
+      });
+      if (!asset) {
+        throw new BadRequestException(
+          `MediaAsset ${input.mediaAssetId} no disponible para el negocio actual`,
+        );
+      }
+      if (asset.status === MediaAssetStatus.MISSING) {
+        throw new BadRequestException(
+          `La imagen ${asset.name} ya no está disponible en Google Drive`,
+        );
+      }
+      if (asset.kind !== 'IMAGE') {
+        throw new BadRequestException(
+          `El recurso ${asset.name} no es una imagen utilizable`,
+        );
+      }
+    }
     return prisma.creative.create({
       data: {
         businessId: this.businessId,

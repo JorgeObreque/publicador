@@ -19,7 +19,10 @@ export interface MetaCreativeDraft {
   primaryText: string;
   headline: string;
   description?: string;
-  imageUrl: string;
+  image: {
+    mimeType: string;
+    bytes: Buffer;
+  };
   attributionCode: string;
   existingId?: string;
 }

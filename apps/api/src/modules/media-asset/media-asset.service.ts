@@ -1,16 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { MediaAssetKind, MediaAssetSource, Prisma } from '@prisma/client';
+import { MediaAssetKind, MediaAssetSource, MediaAssetStatus, Prisma } from '@prisma/client';
 import { prisma } from '@publicador/database';
 import { BusinessContextResolver } from '../../shared/business-context/business-context.resolver';
 import { GoogleDriveService } from '../google-drive/google-drive.service';
 import { GoogleDriveFile } from '../google-drive/google-drive.types';
-import {
-  convertHeifToJpeg,
-  HeifConversionError,
-  HeifConversionResult,
-} from './heif-converter';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 
 export interface SyncMediaAssetsResult {
   rootFolderId: string;
@@ -27,26 +20,41 @@ export interface SyncFolderSummary {
   upserts: number;
   archived: number;
   reused: number;
-  converted: number;
 }
 
 export interface ReadyMediaAsset {
   id: string;
   kind: MediaAssetKind;
   mimeType: string;
-  externalLink: string | null;
-  localPath: string | null;
   name: string;
-  parentExternalFileId: string | null;
+  status: MediaAssetStatus;
 }
 
-const SUPPORTED_IMAGE_KINDS: MediaAssetKind[] = ['IMAGE'];
-const SUPPORTED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
-const CONVERTIBLE_IMAGE_MIME_TYPES = ['image/heic', 'image/heif'] as const;
-const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+export interface MediaAssetSummary {
+  id: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  status: MediaAssetStatus;
+  kind: MediaAssetKind;
+  source: MediaAssetSource;
+  externalFileId: string;
+  modifiedTime: string | null;
+  requiresConversion: boolean;
+  isAvailable: boolean;
+  thumbnailUrl: string;
+}
 
-export const MEDIA_ASSET_CONVERSION_DIR =
-  process.env.PUBLICADOR_MEDIA_DIR ?? join(process.cwd(), '.data', 'media-assets');
+const IMAGE_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+]);
+const CONVERTIBLE_IMAGE_MIME_TYPES = new Set(['image/heic', 'image/heif']);
+const VIDEO_MIME_TYPES = new Set(['video/mp4', 'video/quicktime']);
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 
 @Injectable()
 export class MediaAssetService {
@@ -55,9 +63,7 @@ export class MediaAssetService {
   constructor(
     private readonly businessContext: BusinessContextResolver,
     private readonly googleDrive: GoogleDriveService,
-  ) {
-    void mkdir(MEDIA_ASSET_CONVERSION_DIR, { recursive: true }).catch(() => undefined);
-  }
+  ) {}
 
   private get businessId(): string {
     return this.businessContext.resolve().businessId;
@@ -80,101 +86,161 @@ export class MediaAssetService {
     if (folders.videos) {
       result.folders.videos = await this.syncMediaFolder(
         folders.videos,
+        VIDEO_MIME_TYPES,
         ['VIDEO'],
-        ['video/mp4', 'video/quicktime'],
-        false,
       );
     }
     return result;
   }
 
-  async listAssets(filter: { kind?: MediaAssetKind } = {}): Promise<unknown[]> {
-    const where: Prisma.MediaAssetWhereInput = { businessId: this.businessId, status: { not: 'ARCHIVED' } };
-    if (filter.kind) {
-      where.kind = filter.kind;
-    }
-    return prisma.mediaAsset.findMany({
-      where,
+  async listAssets(): Promise<MediaAssetSummary[]> {
+    const assets = await prisma.mediaAsset.findMany({
+      where: { businessId: this.businessId, status: { not: MediaAssetStatus.ARCHIVED } },
       orderBy: { name: 'asc' },
     });
+    return assets.map((asset) => this.toSummary(asset));
   }
 
-  async findReadyImageById(id: string): Promise<ReadyMediaAsset | null> {
+  async listImages(): Promise<MediaAssetSummary[]> {
+    const assets = await prisma.mediaAsset.findMany({
+      where: {
+        businessId: this.businessId,
+        kind: 'IMAGE',
+        status: { not: MediaAssetStatus.ARCHIVED },
+      },
+      orderBy: { name: 'asc' },
+    });
+    return assets.map((asset) => this.toSummary(asset));
+  }
+
+  async findImageForPublishing(id: string): Promise<{
+    id: string;
+    name: string;
+    mimeType: string;
+    sizeBytes: number;
+    status: MediaAssetStatus;
+  } | null> {
     const asset = await prisma.mediaAsset.findFirst({
-      where: { id, businessId: this.businessId, status: 'READY' },
+      where: {
+        id,
+        businessId: this.businessId,
+        kind: 'IMAGE',
+        status: { not: MediaAssetStatus.ARCHIVED },
+      },
     });
     if (!asset) return null;
-    return this.toReady(asset);
+    return {
+      id: asset.id,
+      name: asset.name,
+      mimeType: asset.mimeType,
+      sizeBytes: asset.sizeBytes,
+      status: asset.status,
+    };
   }
 
-  async findReadyImageByName(name: string): Promise<ReadyMediaAsset | null> {
-    const asset = await prisma.mediaAsset.findFirst({
-      where: { businessId: this.businessId, name, status: 'READY' },
-      orderBy: { lastSyncedAt: 'desc' },
+  async markMissing(fileIds: string[]): Promise<void> {
+    if (fileIds.length === 0) return;
+    await prisma.mediaAsset.updateMany({
+      where: {
+        businessId: this.businessId,
+        source: MediaAssetSource.GOOGLE_DRIVE,
+        externalFileId: { in: fileIds },
+      },
+      data: { status: MediaAssetStatus.MISSING },
     });
-    return asset ? this.toReady(asset) : null;
   }
 
-  async describeDownloadUrl(id: string): Promise<{
-    id: string;
-    publicUrl: string;
+  async markReady(fileIds: string[]): Promise<void> {
+    if (fileIds.length === 0) return;
+    await prisma.mediaAsset.updateMany({
+      where: {
+        businessId: this.businessId,
+        source: MediaAssetSource.GOOGLE_DRIVE,
+        externalFileId: { in: fileIds },
+      },
+      data: { status: MediaAssetStatus.READY },
+    });
+  }
+
+  async downloadImageBytes(id: string): Promise<{
+    name: string;
+    mimeType: string;
+    buffer: Buffer;
+    status: MediaAssetStatus;
+  } | null> {
+    const asset = await prisma.mediaAsset.findFirst({
+      where: {
+        id,
+        businessId: this.businessId,
+        kind: 'IMAGE',
+        status: { not: MediaAssetStatus.ARCHIVED },
+      },
+    });
+    if (!asset) return null;
+    const file: GoogleDriveFile = {
+      id: asset.externalFileId,
+      name: asset.name,
+      driveFileId: asset.externalFileId,
+      driveFolderId: asset.externalFolderId ?? '',
+      folderKey: asset.externalFolderKey ?? 'imagenes',
+      mimeType: asset.mimeType,
+      sizeBytes: asset.sizeBytes,
+      modifiedTime: asset.lastSyncedAt.toISOString(),
+      md5Checksum: asset.checksum ?? undefined,
+      extension: '',
+    };
+    const buffer = await this.googleDrive.download(file);
+    return {
+      name: asset.name,
+      mimeType: asset.mimeType,
+      buffer,
+      status: asset.status,
+    };
+  }
+
+  async fetchThumbnailStream(id: string): Promise<{
+    buffer: Buffer;
     mimeType: string;
     name: string;
-    sizeBytes: number;
-  } | null> {
-    const asset = await this.resolveDownload(id);
-    return asset;
-  }
-
-  async resolveDownload(id: string): Promise<{
-    id: string;
-    publicUrl: string;
-    mimeType: string;
-    name: string;
-    sizeBytes: number;
   } | null> {
     const asset = await prisma.mediaAsset.findFirst({
-      where: { id, businessId: this.businessId, status: 'READY' },
+      where: { id, businessId: this.businessId, status: { not: MediaAssetStatus.ARCHIVED } },
     });
-    if (!asset || !asset.externalLocalPath) return null;
+    if (!asset) return null;
+    const file: GoogleDriveFile = {
+      id: asset.externalFileId,
+      name: asset.name,
+      driveFileId: asset.externalFileId,
+      driveFolderId: asset.externalFolderId ?? '',
+      folderKey: asset.externalFolderKey ?? 'imagenes',
+      mimeType: asset.mimeType,
+      sizeBytes: asset.sizeBytes,
+      modifiedTime: asset.lastSyncedAt.toISOString(),
+      md5Checksum: asset.checksum ?? undefined,
+      extension: '',
+    };
+    const buffer = await this.googleDrive.fetchThumbnail(file);
+    return { buffer, mimeType: 'image/jpeg', name: asset.name };
+  }
+
+  private toSummary(asset: Prisma.MediaAssetGetPayload<true>): MediaAssetSummary {
     const base =
       process.env.PUBLICADOR_PUBLIC_BASE_URL ??
       process.env.NEXT_PUBLIC_API_BASE_URL ??
       'http://localhost:3001';
     return {
       id: asset.id,
-      publicUrl: `${base.replace(/\/$/, '')}/api/v1/media-assets/${asset.id}/file`,
-      mimeType: asset.mimeType,
       name: asset.name,
+      mimeType: asset.mimeType,
       sizeBytes: asset.sizeBytes,
-    };
-  }
-
-  async resolveFileStream(id: string): Promise<{
-    localPath: string;
-    mimeType: string;
-    name: string;
-  } | null> {
-    const asset = await prisma.mediaAsset.findFirst({
-      where: { id, businessId: this.businessId, status: 'READY' },
-    });
-    if (!asset?.externalLocalPath) return null;
-    return {
-      localPath: asset.externalLocalPath,
-      mimeType: asset.mimeType,
-      name: asset.name,
-    };
-  }
-
-  private toReady(asset: Prisma.MediaAssetGetPayload<true>): ReadyMediaAsset {
-    return {
-      id: asset.id,
+      status: asset.status,
       kind: asset.kind,
-      mimeType: asset.mimeType,
-      externalLink: asset.externalLink,
-      localPath: asset.externalLocalPath,
-      name: asset.name,
-      parentExternalFileId: asset.parentExternalFileId,
+      source: asset.source,
+      externalFileId: asset.externalFileId,
+      modifiedTime: asset.lastSyncedAt.toISOString(),
+      requiresConversion: CONVERTIBLE_IMAGE_MIME_TYPES.has(asset.mimeType.toLowerCase()),
+      isAvailable: asset.status === MediaAssetStatus.READY,
+      thumbnailUrl: `${base.replace(/\/$/, '')}/api/v1/media-assets/${asset.id}/thumbnail`,
     };
   }
 
@@ -188,7 +254,6 @@ export class MediaAssetService {
       upserts: 0,
       archived: 0,
       reused: 0,
-      converted: 0,
     };
     const files = await this.googleDrive.listImages({
       id: folder.driveFolderId,
@@ -197,52 +262,39 @@ export class MediaAssetService {
     });
     summary.discovered = files.length;
     const seen = new Set<string>();
-
     for (const file of files) {
       const mime = file.mimeType.toLowerCase();
-      const isStandard = SUPPORTED_IMAGE_MIME_TYPES.includes(
-        mime as (typeof SUPPORTED_IMAGE_MIME_TYPES)[number],
-      );
-      const isConvertible = CONVERTIBLE_IMAGE_MIME_TYPES.includes(
-        mime as (typeof CONVERTIBLE_IMAGE_MIME_TYPES)[number],
-      );
-      if (!isStandard && !isConvertible) continue;
+      if (!IMAGE_MIME_TYPES.has(mime)) continue;
       if (file.sizeBytes > MAX_IMAGE_BYTES) {
         this.logger.warn(`Excede el tamaño máximo: ${file.name}`);
         continue;
       }
       seen.add(file.driveFileId);
-
-      if (isConvertible) {
-        const converted = await this.convertAndPersistRawImage(file, summary);
-        if (converted) summary.converted += 1;
-        continue;
-      }
-      await this.upsertStandardImage(file, summary);
+      await this.upsertImage(file, summary);
     }
 
-    const archivedImageNow = await prisma.mediaAsset.updateMany({
+    const archived = await prisma.mediaAsset.updateMany({
       where: {
         businessId: this.businessId,
         source: MediaAssetSource.GOOGLE_DRIVE,
         externalFolderId: folder.driveFolderId,
-        AND: [
-          { externalFileId: { notIn: Array.from(seen) } },
-          { NOT: { parentExternalFileId: { in: Array.from(seen) } } },
-        ],
-        status: { not: 'ARCHIVED' },
+        externalFileId: { notIn: Array.from(seen) },
+        status: { not: MediaAssetStatus.ARCHIVED },
       },
-      data: { status: 'ARCHIVED', archivedAt: new Date(), lastSyncedAt: new Date() },
+      data: {
+        status: MediaAssetStatus.ARCHIVED,
+        archivedAt: new Date(),
+        lastSyncedAt: new Date(),
+      },
     });
-    summary.archived = archivedImageNow.count;
+    summary.archived = archived.count;
     return summary;
   }
 
   private async syncMediaFolder(
     folder: { driveFolderId: string; name: string },
+    allowedMimeTypes: Set<string>,
     kinds: MediaAssetKind[],
-    allowedMimeTypes: string[],
-    _convertible: boolean,
   ): Promise<SyncFolderSummary> {
     const summary: SyncFolderSummary = {
       folderId: folder.driveFolderId,
@@ -250,72 +302,42 @@ export class MediaAssetService {
       upserts: 0,
       archived: 0,
       reused: 0,
-      converted: 0,
     };
-    const files = kinds.includes('IMAGE')
-      ? await this.googleDrive.listImages({
-          id: folder.driveFolderId,
-          name: folder.name,
-          driveFolderId: folder.driveFolderId,
-        })
-      : await this.googleDrive.listVideos({
-          id: folder.driveFolderId,
-          name: folder.name,
-          driveFolderId: folder.driveFolderId,
-        });
+    const files = await this.googleDrive.listVideos({
+      id: folder.driveFolderId,
+      name: folder.name,
+      driveFolderId: folder.driveFolderId,
+    });
     summary.discovered = files.length;
-
     const seen = new Set<string>();
-    const allowedKinds = new Set(kinds);
     for (const file of files) {
-      if (!allowedMimeTypes.includes(file.mimeType)) continue;
+      if (!allowedMimeTypes.has(file.mimeType)) continue;
       if (file.sizeBytes > MAX_IMAGE_BYTES) {
         this.logger.warn(`Excede el tamaño máximo: ${file.name}`);
         continue;
       }
       seen.add(file.driveFileId);
-      const existing = await prisma.mediaAsset.findUnique({
-        where: {
-          businessId_source_externalFileId: {
-            businessId: this.businessId,
-            source: MediaAssetSource.GOOGLE_DRIVE,
-            externalFileId: file.driveFileId,
-          },
-        },
-      });
-      const nextKind = (allowedKinds.has('IMAGE') ? 'IMAGE' : 'VIDEO') as MediaAssetKind;
-      if (existing) {
-        summary.reused += 1;
-        await prisma.mediaAsset.update({
-          where: { id: existing.id },
-          data: this.buildUpdateFromFile(file),
-        });
-        continue;
-      }
-      await prisma.mediaAsset.create({
-        data: {
-          ...this.buildCreateFromFile(file),
-          kind: nextKind,
-        },
-      });
-      summary.upserts += 1;
+      await this.upsertVideo(file, summary, kinds);
     }
-
-    const archivedNow = await prisma.mediaAsset.updateMany({
+    const archived = await prisma.mediaAsset.updateMany({
       where: {
         businessId: this.businessId,
         source: MediaAssetSource.GOOGLE_DRIVE,
         externalFolderId: folder.driveFolderId,
         externalFileId: { notIn: Array.from(seen) },
-        status: { not: 'ARCHIVED' },
+        status: { not: MediaAssetStatus.ARCHIVED },
       },
-      data: { status: 'ARCHIVED', archivedAt: new Date(), lastSyncedAt: new Date() },
+      data: {
+        status: MediaAssetStatus.ARCHIVED,
+        archivedAt: new Date(),
+        lastSyncedAt: new Date(),
+      },
     });
-    summary.archived = archivedNow.count;
+    summary.archived = archived.count;
     return summary;
   }
 
-  private async upsertStandardImage(file: GoogleDriveFile, summary: SyncFolderSummary): Promise<void> {
+  private async upsertImage(file: GoogleDriveFile, summary: SyncFolderSummary): Promise<void> {
     const existing = await prisma.mediaAsset.findUnique({
       where: {
         businessId_source_externalFileId: {
@@ -334,16 +356,17 @@ export class MediaAssetService {
       return;
     }
     await prisma.mediaAsset.create({
-      data: { ...this.buildCreateFromFile(file), kind: SUPPORTED_IMAGE_KINDS[0] },
+      data: { ...this.buildCreateFromFile(file), kind: 'IMAGE' },
     });
     summary.upserts += 1;
   }
 
-  private async convertAndPersistRawImage(
+  private async upsertVideo(
     file: GoogleDriveFile,
     summary: SyncFolderSummary,
-  ): Promise<boolean> {
-    const existingRaw = await prisma.mediaAsset.findUnique({
+    kinds: MediaAssetKind[],
+  ): Promise<void> {
+    const existing = await prisma.mediaAsset.findUnique({
       where: {
         businessId_source_externalFileId: {
           businessId: this.businessId,
@@ -352,74 +375,18 @@ export class MediaAssetService {
         },
       },
     });
-    if (!existingRaw) {
-      await prisma.mediaAsset.create({
-        data: {
-          ...this.buildCreateFromFile(file),
-          kind: SUPPORTED_IMAGE_KINDS[0],
-        },
-      });
-    }
-    void summary;
-
-    let buffer: Buffer;
-    try {
-      buffer = await this.googleDrive.download(file);
-    } catch (error) {
-      this.logger.warn(`No se pudo descargar ${file.name}: ${(error as Error).message}`);
-      return false;
-    }
-    let conversion: HeifConversionResult | null;
-    try {
-      conversion = await convertHeifToJpeg(buffer);
-    } catch (error) {
-      if (error instanceof HeifConversionError) {
-        this.logger.warn(`Conversión HEIC fallida para ${file.name}: ${error.message}`);
-      } else {
-        this.logger.warn(`Fallo inesperado al convertir ${file.name}: ${(error as Error).message}`);
-      }
-      return false;
-    }
-    const derivedName = this.derivedName(file.name);
-    const localPath = await this.persistDerived(derivedName, conversion.buffer);
-    const derivedId = `${file.driveFileId}::jpg`;
-
-    const existingDerived = await prisma.mediaAsset.findUnique({
-      where: {
-        businessId_source_externalFileId: {
-          businessId: this.businessId,
-          source: MediaAssetSource.GOOGLE_DRIVE,
-          externalFileId: derivedId,
-        },
-      },
-    });
-    const derivedData = {
-      businessId: this.businessId,
-      source: MediaAssetSource.GOOGLE_DRIVE,
-      kind: SUPPORTED_IMAGE_KINDS[0],
-      externalFileId: derivedId,
-      externalFolderId: file.driveFolderId,
-      externalFolderKey: file.folderKey,
-      externalLink: file.webContentLink,
-      externalLocalPath: localPath,
-      parentExternalFileId: file.driveFileId,
-      name: derivedName,
-      mimeType: conversion.outputMime,
-      sizeBytes: conversion.outputBytes,
-      lastSyncedAt: new Date(),
-    } as Prisma.MediaAssetUncheckedCreateInput;
-
-    if (existingDerived) {
+    if (existing) {
       summary.reused += 1;
       await prisma.mediaAsset.update({
-        where: { id: existingDerived.id },
-        data: { ...derivedData, name: derivedName } as Prisma.MediaAssetUpdateInput,
+        where: { id: existing.id },
+        data: this.buildUpdateFromFile(file),
       });
-    } else {
-      summary.upserts += 1;
-      await prisma.mediaAsset.create({ data: derivedData });
+      return;
     }
-    return true;
+    await prisma.mediaAsset.create({
+      data: { ...this.buildCreateFromFile(file), kind: kinds[0] },
+    });
+    summary.upserts += 1;
   }
 
   private buildUpdateFromFile(file: GoogleDriveFile): Prisma.MediaAssetUpdateInput {
@@ -432,11 +399,14 @@ export class MediaAssetService {
       externalFolderKey: file.folderKey,
       externalLink: file.webContentLink ?? undefined,
       lastSyncedAt: new Date(),
-      status: 'READY',
+      status: MediaAssetStatus.READY,
     };
   }
 
-  private buildCreateFromFile(file: GoogleDriveFile, kind: MediaAssetKind = SUPPORTED_IMAGE_KINDS[0]): Prisma.MediaAssetUncheckedCreateInput {
+  private buildCreateFromFile(
+    file: GoogleDriveFile,
+    kind: MediaAssetKind = 'IMAGE',
+  ): Prisma.MediaAssetUncheckedCreateInput {
     return {
       businessId: this.businessId,
       source: MediaAssetSource.GOOGLE_DRIVE,
@@ -450,18 +420,7 @@ export class MediaAssetService {
       sizeBytes: file.sizeBytes,
       checksum: file.md5Checksum,
       lastSyncedAt: new Date(),
+      status: MediaAssetStatus.READY,
     };
-  }
-
-  private async persistDerived(name: string, buffer: Buffer): Promise<string> {
-    const safeName = name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const target = join(MEDIA_ASSET_CONVERSION_DIR, safeName);
-    await writeFile(target, buffer);
-    return target;
-  }
-
-  private derivedName(name: string): string {
-    const base = name.replace(/\.(heic|heif)$/i, '');
-    return `${base}.jpg`;
   }
 }

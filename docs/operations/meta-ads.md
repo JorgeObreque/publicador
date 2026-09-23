@@ -41,6 +41,9 @@ Los fixtures Meta solo están habilitados con `NODE_ENV=test`. Credenciales inco
 ## Recursos Creativos
 
 - Los creativos viven en `MediaAsset` y admiten origen Google Drive o URL manual.
-- `POST /api/v1/media-assets/drive/sync` descubre `imagenes` y `videos` bajo la raíz configurada.
-- Archivos HEIC y HEIF de Drive se convierten automáticamente a JPG vía `heif-convert`, se guardan en `PUBLICADOR_MEDIA_DIR` y se exponen en `GET /api/v1/media-assets/:id/file`.
-- `GET /api/v1/media-assets/:id/download` devuelve la URL pública utilizable como `imageUrl` en la publicación de Meta; los orígenes permitidos se amplían con `PUBLICADOR_PUBLIC_BASE_URL`.
+- `POST /api/v1/media-assets/drive/sync` descubre `imagenes` y `videos` bajo la raíz configurada y registra solo metadatos (nombre, MIME, tamaño, checksum, fechas). **No descarga ni convierte archivos durante la sincronización.**
+- Los recursos HEIC/HEIF se registran como convertibles (`requiresConversion: true`); la conversión a JPG se realiza únicamente al publicar la campaña.
+- Publicador **no conserva imágenes ni conversiones en almacenamiento local**. Google Drive es la fuente permanente y Meta guarda una copia de la imagen publicada.
+- `GET /api/v1/media-assets` devuelve metadatos útiles para construir la galería, incluida la URL interna de la miniatura.
+- `GET /api/v1/media-assets/:id/thumbnail` sirve una miniatura JPEG transmitida desde Google Drive sin persistirla.
+- Al publicar una campaña, Publicador descarga la imagen desde Drive solo en memoria, la sube a `/adimages` y libera el `Buffer` al terminar.

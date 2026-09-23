@@ -31,3 +31,24 @@ export type CreateCampaignInput = z.infer<typeof createCampaignSchema>;
 
 export const updateCampaignSchema = z.object(campaignFields).partial();
 export type UpdateCampaignInput = z.infer<typeof updateCampaignSchema>;
+
+export const createCampaignWithCreativeSchema = z
+  .object({
+    campaign: createCampaignSchema,
+    creative: z.object({
+      name: z.string().trim().min(1).max(120),
+      format: z.string().trim().min(1).max(40),
+      primaryText: z.string().trim().min(1).max(2000),
+      headline: z.string().trim().min(1).max(80),
+      description: z.string().trim().max(2000).optional(),
+      callToAction: z.string().trim().min(1).max(40),
+      mediaAssetId: z.string().min(1),
+    }),
+    isControl: z.boolean().optional(),
+  })
+  .refine(
+    (v) => Boolean(v.campaign.dailyBudget) !== Boolean(v.campaign.lifetimeBudget),
+    { message: 'Solo se admite un tipo de presupuesto por campaña', path: ['campaign', 'dailyBudget'] },
+  );
+
+export type CreateCampaignWithCreativeInput = z.infer<typeof createCampaignWithCreativeSchema>;

@@ -2,7 +2,10 @@ import './setup';
 import request from 'supertest';
 import { buildApp } from './helpers/test-app';
 import { EasyAppointmentsService } from '../src/modules/easyappointments/easyappointments.service';
+import { MediaAssetService } from '../src/modules/media-asset/media-asset.service';
 import { MetaAdsService } from '../src/modules/meta-ads/meta-ads.service';
+import { prisma } from '@publicador/database';
+import { MediaAssetSource } from '@prisma/client';
 
 describe('Campaign lifecycle (integration)', () => {
   it('runs the full simulated cycle: create campaign, attach creative, publish paused, import metrics, sync appointment, confirm deposit, summarize', async () => {
@@ -10,6 +13,7 @@ describe('Campaign lifecycle (integration)', () => {
 
     const metaAds = app.get(MetaAdsService);
     const easyAppointments = app.get(EasyAppointmentsService);
+    const mediaAssets = app.get(MediaAssetService);
 
     const campaign = await request(app.getHttpServer())
       .post('/api/v1/campaigns')
@@ -21,6 +25,30 @@ describe('Campaign lifecycle (integration)', () => {
       })
       .expect(201);
 
+    const mediaAsset = await prisma.mediaAsset.create({
+      data: {
+        businessId: process.env.BUSINESS_ID ?? 'test-business',
+        source: MediaAssetSource.GOOGLE_DRIVE,
+        kind: 'IMAGE',
+        externalFileId: 'fixture-balayage',
+        externalFolderId: 'fixture-folder',
+        externalFolderKey: 'imagenes',
+        name: 'balayage.jpg',
+        mimeType: 'image/jpeg',
+        sizeBytes: 2048,
+        checksum: 'fixture-checksum',
+        status: 'READY',
+      },
+    });
+    mediaAssets.downloadImageBytes = jest
+      .fn()
+      .mockResolvedValue({
+        name: 'balayage.jpg',
+        mimeType: 'image/jpeg',
+        buffer: Buffer.from('fixture-image-bytes'),
+        status: 'READY',
+      });
+
     const creative = await request(app.getHttpServer())
       .post('/api/v1/creatives')
       .send({
@@ -29,7 +57,7 @@ describe('Campaign lifecycle (integration)', () => {
         primaryText: 'Balayage natural',
         headline: 'Reserva tu balayage',
         callToAction: 'WHATSAPP_MESSAGE',
-        imageUrl: 'https://example.com/balayage.jpg',
+        mediaAssetId: mediaAsset.id,
       })
       .expect(201);
 

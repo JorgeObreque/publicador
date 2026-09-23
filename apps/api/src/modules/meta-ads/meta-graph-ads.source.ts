@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import axios from 'axios';
 import { MetaGraphClient } from '../../shared/meta/meta-graph.client';
 import {
   MetaAdDraft,
@@ -211,7 +210,7 @@ export class MetaGraphAdsSource implements MetaAdsSource {
       return { id: existing.id, name: existing.name ?? draft.name };
     }
 
-    const imageHash = await this.uploadImage(draft.imageUrl);
+    const imageHash = await this.uploadImageBytes(draft.image.bytes, draft.image.mimeType);
     const config = this.client.settings;
     const message = `Hola, quiero reservar una hora. ${draft.attributionCode}`;
     const whatsappLink = `https://api.whatsapp.com/send?phone=${config.whatsappNumber}&text=${encodeURIComponent(message)}`;
@@ -369,44 +368,21 @@ export class MetaGraphAdsSource implements MetaAdsSource {
     return rows;
   }
 
-  private async uploadImage(imageUrl: string): Promise<string> {
-    const url = new URL(imageUrl);
-    const configuredOrigins = (process.env.META_IMAGE_ALLOWED_ORIGINS ?? '')
-      .split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean);
-    const assetOrigin = process.env.ASSET_PUBLIC_BASE_URL
-      ? new URL(process.env.ASSET_PUBLIC_BASE_URL).origin
-      : undefined;
-    const apiBaseOrigin = process.env.PUBLICADOR_PUBLIC_BASE_URL
-      ? new URL(process.env.PUBLICADOR_PUBLIC_BASE_URL).origin
-      : undefined;
-    const allowedOrigins = new Set(
-      [...configuredOrigins, assetOrigin, apiBaseOrigin].filter(Boolean),
-    );
-    if (!['http:', 'https:'].includes(url.protocol) || !allowedOrigins.has(url.origin)) {
-      throw new Error(
-        `Origen de imagen no permitido: ${url.origin}; añadirlo a META_IMAGE_ALLOWED_ORIGINS`,
-      );
-    }
-    const response = await axios.get<ArrayBuffer>(imageUrl, {
-      responseType: 'arraybuffer',
-      timeout: 30000,
-      maxRedirects: 0,
-      maxContentLength: 20 * 1024 * 1024,
-      maxBodyLength: 20 * 1024 * 1024,
-    });
-    const contentType = String(response.headers['content-type'] ?? 'image/jpeg');
-    if (!contentType.startsWith('image/')) {
-      throw new Error(`El recurso creativo no es una imagen (${contentType})`);
+  private async uploadImageBytes(bytes: Buffer, mimeType: string): Promise<string> {
+    if (!this.isSupportedImageMime(mimeType)) {
+      throw new Error(`Tipo de imagen no soportado para Meta: ${mimeType}`);
     }
     const uploaded = await this.client.post<{
       images: Record<string, { hash: string }>;
     }>(`act_${this.client.adAccountId}/adimages`, {
-      bytes: Buffer.from(response.data).toString('base64'),
+      bytes: bytes.toString('base64'),
     });
     const image = Object.values(uploaded.images)[0];
     if (!image?.hash) throw new Error('Meta no devolvió el hash de la imagen subida');
     return image.hash;
+  }
+
+  private isSupportedImageMime(mime: string): boolean {
+    return ['image/jpeg', 'image/png', 'image/webp'].includes(mime.toLowerCase());
   }
 }

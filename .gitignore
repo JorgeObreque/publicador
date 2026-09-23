@@ -13,3 +13,4 @@ apps/api/.data
 .vscode
 .idea
 prisma/migrations/dev.db*
+*.tsbuildinfo

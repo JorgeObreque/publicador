@@ -23,4 +23,5 @@ export interface GoogleDriveClient {
   listImages(folder: GoogleDriveFolder): Promise<GoogleDriveFile[]>;
   listVideos(folder: GoogleDriveFolder): Promise<GoogleDriveFile[]>;
   download(file: GoogleDriveFile): Promise<Buffer>;
+  fetchThumbnail(file: GoogleDriveFile): Promise<Buffer>;
 }

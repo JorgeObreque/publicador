@@ -52,6 +52,10 @@ export class GoogleDriveService {
     return this.client.download(file);
   }
 
+  async fetchThumbnail(file: GoogleDriveFile): Promise<Buffer> {
+    return this.client.fetchThumbnail(file);
+  }
+
   getClient(): GoogleDriveClient {
     return this.client;
   }

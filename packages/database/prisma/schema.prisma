@@ -78,11 +78,9 @@ model MediaAsset {
   durationSeconds   Int?
   status            MediaAssetStatus @default(READY)
   archivedAt        DateTime?
-  lastSyncedAt      DateTime        @default(now())
+  lastSyncedAt        DateTime        @default(now())
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
-  parentExternalFileId String?
-  externalLocalPath String?
 
   business    Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
   creatives   Creative[]

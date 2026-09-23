@@ -61,4 +61,11 @@ export class FixtureGoogleDriveClient implements GoogleDriveClient {
     this.logger.warn(`Fixture download requested for ${file.driveFileId}; returning empty buffer.`);
     return Buffer.alloc(0);
   }
+
+  async fetchThumbnail(file: GoogleDriveFile): Promise<Buffer> {
+    this.logger.warn(
+      `Fixture thumbnail requested for ${file.driveFileId}; returning empty buffer.`,
+    );
+    return Buffer.alloc(0);
+  }
 }

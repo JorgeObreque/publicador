@@ -12,6 +12,11 @@ import { BusinessContextResolver } from '../../shared/business-context/business-
 import { FixtureMetaAdsSource } from './fixture-meta-ads.source';
 import { MetaGraphAdsSource } from './meta-graph-ads.source';
 import { MetaAdsSource } from './meta-ads.types';
+import { MediaAssetService } from '../media-asset/media-asset.service';
+import {
+  convertHeifToJpeg,
+  HeifConversionError,
+} from '../media-asset/heif-converter';
 
 @Injectable()
 export class MetaAdsService {
@@ -21,6 +26,7 @@ export class MetaAdsService {
     private readonly factory: MetaClientFactory,
     private readonly businessContext: BusinessContextResolver,
     private readonly fixture: FixtureMetaAdsSource,
+    private readonly mediaAssets: MediaAssetService,
   ) {
     this.source =
       process.env.NODE_ENV === 'test'
@@ -42,7 +48,11 @@ export class MetaAdsService {
   async publishPaused(localCampaignId: string) {
     const local = await prisma.campaign.findFirst({
       where: { id: localCampaignId, businessId: this.businessId },
-      include: { campaignCreatives: { include: { creative: true } } },
+      include: {
+        campaignCreatives: {
+          include: { creative: { include: { mediaAsset: true } } },
+        },
+      },
     });
     if (!local) throw new NotFoundException(`Campaign ${localCampaignId} not found`);
 
@@ -65,7 +75,7 @@ export class MetaAdsService {
       );
     }
     for (const attachment of local.campaignCreatives) {
-      const creativeFingerprint = this.creativeFingerprint(attachment);
+      const creativeFingerprint = await this.creativeFingerprint(attachment);
       if (
         (attachment.metaCreativeId || attachment.metaAdId) &&
         attachment.metaPublishFingerprint !== creativeFingerprint
@@ -152,13 +162,14 @@ export class MetaAdsService {
 
       const publishedCreatives = [];
       for (const attachment of local.campaignCreatives) {
-        const creativeFingerprint = this.creativeFingerprint(attachment);
+        const creativeFingerprint = await this.creativeFingerprint(attachment);
+        const creativeImage = await this.resolveCreativeImage(attachment);
         const remoteCreative = await this.source.ensureCreative({
           name: this.remoteName(attachment.creative.name, attachment.id, 'creative'),
           primaryText: attachment.creative.primaryText,
           headline: attachment.creative.headline,
           description: attachment.creative.description ?? undefined,
-          imageUrl: attachment.creative.imageUrl!,
+          image: creativeImage,
           attributionCode: attachment.attributionCode,
           existingId: attachment.metaCreativeId ?? undefined,
         });
@@ -315,7 +326,11 @@ export class MetaAdsService {
     lifetimeBudget: Prisma.Decimal | null;
     endDate: Date | null;
     campaignCreatives: Array<{
-      creative: { imageUrl: string | null; callToAction: string };
+      creative: {
+        imageUrl: string | null;
+        mediaAssetId: string | null;
+        callToAction: string;
+      };
     }>;
   }) {
     if (campaign.status !== CampaignStatus.DRAFT && campaign.status !== CampaignStatus.PAUSED) {
@@ -334,8 +349,14 @@ export class MetaAdsService {
     if (campaign.campaignCreatives.length === 0) {
       throw new BadRequestException('La campaña requiere al menos un creativo asociado');
     }
-    if (campaign.campaignCreatives.some(({ creative }) => !creative.imageUrl)) {
-      throw new BadRequestException('Todos los creativos deben incluir imageUrl');
+    if (
+      campaign.campaignCreatives.some(
+        ({ creative }) => !creative.imageUrl && !creative.mediaAssetId,
+      )
+    ) {
+      throw new BadRequestException(
+        'Todos los creativos deben incluir imageUrl o mediaAssetId',
+      );
     }
     if (
       campaign.campaignCreatives.some(
@@ -369,7 +390,7 @@ export class MetaAdsService {
     if (updated.count !== 1) throw new ConflictException('Otro proceso retomó la publicación');
   }
 
-  private creativeFingerprint(attachment: {
+  private async creativeFingerprint(attachment: {
     attributionCode: string;
     creative: {
       name: string;
@@ -377,7 +398,9 @@ export class MetaAdsService {
       headline: string;
       description: string | null;
       imageUrl: string | null;
+      mediaAssetId: string | null;
       callToAction: string;
+      mediaAsset?: { checksum: string | null; lastSyncedAt: Date } | null;
     };
   }) {
     return this.fingerprint({
@@ -387,8 +410,55 @@ export class MetaAdsService {
       headline: attachment.creative.headline,
       description: attachment.creative.description,
       imageUrl: attachment.creative.imageUrl,
+      mediaAssetId: attachment.creative.mediaAssetId,
+      mediaChecksum: attachment.creative.mediaAsset?.checksum ?? null,
+      mediaLastSyncedAt: attachment.creative.mediaAsset?.lastSyncedAt?.toISOString() ?? null,
       callToAction: attachment.creative.callToAction,
     });
+  }
+
+  private async resolveCreativeImage(attachment: {
+    creative: {
+      mediaAssetId: string | null;
+      imageUrl: string | null;
+    };
+  }): Promise<{ mimeType: string; bytes: Buffer }> {
+    if (attachment.creative.mediaAssetId) {
+      const downloaded = await this.mediaAssets.downloadImageBytes(
+        attachment.creative.mediaAssetId,
+      );
+      if (!downloaded) {
+        throw new BadRequestException(
+          `La imagen del creativo ya no está disponible en Google Drive`,
+        );
+      }
+      if (downloaded.status === 'MISSING') {
+        throw new BadRequestException(
+          `La imagen ${downloaded.name} ya no está disponible en Google Drive`,
+        );
+      }
+      const mime = downloaded.mimeType.toLowerCase();
+      if (['image/heic', 'image/heif'].includes(mime)) {
+        try {
+          const converted = await convertHeifToJpeg(downloaded.buffer);
+          return { mimeType: converted.outputMime, bytes: converted.buffer };
+        } catch (error) {
+          if (error instanceof HeifConversionError) {
+            throw new BadRequestException(
+              `No se pudo convertir ${downloaded.name} a JPG: ${error.message}`,
+            );
+          }
+          throw error;
+        }
+      }
+      return { mimeType: downloaded.mimeType, bytes: downloaded.buffer };
+    }
+    if (attachment.creative.imageUrl) {
+      throw new BadRequestException(
+        'Los creativos con imageUrl externo deben descargarse manualmente antes de publicar',
+      );
+    }
+    throw new BadRequestException('El creativo no tiene una imagen asociada');
   }
 
   private fingerprint(value: unknown) {

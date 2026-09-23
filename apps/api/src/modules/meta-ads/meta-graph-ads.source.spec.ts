@@ -1,6 +1,5 @@
 import { MetaGraphClient } from '../../shared/meta/meta-graph.client';
 import { MetaGraphAdsSource } from './meta-graph-ads.source';
-import axios from 'axios';
 
 describe('MetaGraphAdsSource', () => {
   const settings = {
@@ -88,13 +87,7 @@ describe('MetaGraphAdsSource', () => {
     ).rejects.toThrow(/no está en PAUSED/);
   });
 
-  it('uploads a trusted image as base64 before creating the creative', async () => {
-    const previousBaseUrl = process.env.ASSET_PUBLIC_BASE_URL;
-    process.env.ASSET_PUBLIC_BASE_URL = 'https://assets.example.com/assets';
-    const imageRequest = jest.spyOn(axios, 'get').mockResolvedValue({
-      data: Buffer.from('image-data'),
-      headers: { 'content-type': 'image/jpeg' },
-    });
+  it('uploads the provided image bytes as base64 before creating the creative', async () => {
     const client = {
       adAccountId: '123',
       settings,
@@ -110,15 +103,13 @@ describe('MetaGraphAdsSource', () => {
       name: 'Creative',
       primaryText: 'Text',
       headline: 'Headline',
-      imageUrl: 'https://assets.example.com/assets/creative.jpg',
+      image: { mimeType: 'image/jpeg', bytes: Buffer.from('image-data') },
       attributionCode: 'ADS:CMP-ABC',
     });
 
     expect(client.post).toHaveBeenNthCalledWith(1, 'act_123/adimages', {
       bytes: Buffer.from('image-data').toString('base64'),
     });
-    imageRequest.mockRestore();
-    process.env.ASSET_PUBLIC_BASE_URL = previousBaseUrl;
   });
 
   it('uses the requested Meta civil days and counts conversation starts once', async () => {
