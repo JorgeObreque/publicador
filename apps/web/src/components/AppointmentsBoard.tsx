@@ -15,6 +15,18 @@ interface Props {
   initialAppointments: PendingAppointment[];
 }
 
+const EASY_APPOINTMENT_STATUS_LABEL: Record<string, string> = {
+  booked: 'Reservada',
+  Attended: 'Asistió',
+  'No Show': 'No se presentó',
+  Cancelled: 'Cancelada',
+};
+
+function easyAppointmentLabel(raw: string): string {
+  if (!raw) return 'Sin estado';
+  return EASY_APPOINTMENT_STATUS_LABEL[raw] ?? raw;
+}
+
 export function AppointmentsBoard({ initialAppointments }: Props) {
   const router = useRouter();
   const [items, setItems] = useState<PendingAppointment[]>(initialAppointments);
@@ -88,87 +100,125 @@ export function AppointmentsBoard({ initialAppointments }: Props) {
         </button>
       </div>
       {error && <p style={errorStyle}>{error}</p>}
-      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: '0.75rem' }}>
-        {items.map((item) => {
-          const tone = outcomeTone(item.outcome);
-          const badgeKey = tone === 'paused' ? 'PUBLISHED_PAUSED' : tone === 'error' ? 'PUBLISH_ERROR' : 'PUBLISHING';
-          const badgeLabel = outcomeLabel(item.outcome);
-          return (
-            <li
-              key={item.id}
-              style={{
-                padding: '1rem',
-                border: '1px solid #e4e7eb',
-                borderRadius: '12px',
-                background: '#ffffff',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <p style={{ margin: 0, fontWeight: 600 }}>{formatAppointmentDateTime(item.scheduledStart)}</p>
-                  <p style={{ margin: '0.25rem 0 0', color: '#52606d', fontSize: '0.85rem' }}>
-                    Estado EasyAppointments: {item.appointmentStatus}
-                  </p>
-                </div>
-                <StatusBadge status={{ key: badgeKey, label: badgeLabel, description: badgeLabel, tone }} />
-              </div>
-              <p style={{ margin: '0.5rem 0 0', color: '#3e4c59' }}>
-                Código de atribución: {item.attributionCode ? <code>{item.attributionCode}</code> : 'sin atribución'}
-              </p>
-              {item.depositAmount && (
-                <p style={{ margin: '0.25rem 0 0', color: '#3e4c59' }}>
-                  Depósito: {formatAmount(item.depositAmount)}
-                </p>
-              )}
-              {item.finalRevenue && (
-                <p style={{ margin: '0.25rem 0 0', color: '#3e4c59' }}>
-                  Ingreso final: {formatAmount(item.finalRevenue)}
-                </p>
-              )}
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
-                <button
-                  type="button"
-                  onClick={() => handleDeposit(item)}
-                  disabled={item.depositConfirmed || busyId === item.id}
-                  style={{
-                    ...secondaryButtonStyle,
-                    opacity: item.depositConfirmed || busyId === item.id ? 0.5 : 1,
-                  }}
-                >
-                  Confirmar depósito
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleOutcome(item, 'ATTENDED')}
-                  disabled={busyId === item.id}
-                  style={{ ...secondaryButtonStyle, opacity: busyId === item.id ? 0.5 : 1 }}
-                >
-                  Asistió
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleOutcome(item, 'CANCELLED')}
-                  disabled={busyId === item.id}
-                  style={{ ...secondaryButtonStyle, opacity: busyId === item.id ? 0.5 : 1 }}
-                >
-                  Cancelada
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleOutcome(item, 'NO_SHOW')}
-                  disabled={busyId === item.id}
-                  style={{ ...secondaryButtonStyle, opacity: busyId === item.id ? 0.5 : 1 }}
-                >
-                  No se presentó
-                </button>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+      <div style={{ overflowX: 'auto' }}>
+        <table
+          style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            background: '#ffffff',
+            borderRadius: '12px',
+            overflow: 'hidden',
+            border: '1px solid #e4e7eb',
+            fontSize: '0.85rem',
+          }}
+        >
+          <thead>
+            <tr style={{ background: '#f0f4f8', textAlign: 'left' }}>
+              <th style={th()}>Fecha y hora</th>
+              <th style={th()}>Estado EasyAppointments</th>
+              <th style={th()}>Resultado</th>
+              <th style={th()}>Atribuida</th>
+              <th style={th()}>Depósito</th>
+              <th style={th()}>Ingreso final</th>
+              <th style={th()}>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => {
+              const tone = outcomeTone(item.outcome);
+              const badgeKey = tone === 'paused' ? 'PUBLISHED_PAUSED' : tone === 'error' ? 'PUBLISH_ERROR' : 'PUBLISHING';
+              const badgeLabel = outcomeLabel(item.outcome);
+              const attributed = item.attributionCode ? 'Sí' : 'No';
+              return (
+                <tr key={item.id} data-testid={`appointment-row-${item.id}`} style={{ borderTop: '1px solid #e4e7eb' }}>
+                  <td style={td()}>
+                    <strong>{formatAppointmentDateTime(item.scheduledStart)}</strong>
+                  </td>
+                  <td style={td()}>{easyAppointmentLabel(item.appointmentStatus)}</td>
+                  <td style={td()}>
+                    <StatusBadge status={{ key: badgeKey, label: badgeLabel, description: badgeLabel, tone }} />
+                  </td>
+                  <td style={td()}>
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        padding: '0.15rem 0.5rem',
+                        borderRadius: '999px',
+                        background: attributed === 'Sí' ? '#dcfce7' : '#e5e7eb',
+                        color: attributed === 'Sí' ? '#166534' : '#374151',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {attributed}
+                    </span>
+                    {item.attributionCode ? (
+                      <p style={{ margin: '0.25rem 0 0', color: '#52606d', fontSize: '0.75rem' }}>
+                        Código: <code>{item.attributionCode}</code>
+                      </p>
+                    ) : (
+                      <p style={{ margin: '0.25rem 0 0', color: '#52606d', fontSize: '0.75rem' }}>
+                        sin atribución
+                      </p>
+                    )}
+                  </td>
+                  <td style={td()}>
+                    {item.depositAmount ? formatAmount(item.depositAmount) : '—'}
+                  </td>
+                  <td style={td()}>
+                    {item.finalRevenue ? formatAmount(item.finalRevenue) : '—'}
+                  </td>
+                  <td style={td()}>
+                    <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleDeposit(item)}
+                        disabled={item.depositConfirmed || busyId === item.id}
+                        style={{
+                          ...secondaryButtonStyle,
+                          opacity: item.depositConfirmed || busyId === item.id ? 0.5 : 1,
+                        }}
+                      >
+                        Confirmar depósito
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOutcome(item, 'ATTENDED')}
+                        disabled={busyId === item.id}
+                        style={{ ...secondaryButtonStyle, opacity: busyId === item.id ? 0.5 : 1 }}
+                      >
+                        Asistió
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOutcome(item, 'CANCELLED')}
+                        disabled={busyId === item.id}
+                        style={{ ...secondaryButtonStyle, opacity: busyId === item.id ? 0.5 : 1 }}
+                      >
+                        Cancelada
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOutcome(item, 'NO_SHOW')}
+                        disabled={busyId === item.id}
+                        style={{ ...secondaryButtonStyle, opacity: busyId === item.id ? 0.5 : 1 }}
+                      >
+                        No se presentó
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }
+
+const th = () => ({ padding: '0.6rem 0.75rem', fontWeight: 600, color: '#52606d' });
+const td = () => ({ padding: '0.6rem 0.75rem', color: '#1f2933' });
 
 const primaryButtonStyle = {
   padding: '0.5rem 0.85rem',
@@ -179,13 +229,13 @@ const primaryButtonStyle = {
 } as const;
 
 const secondaryButtonStyle = {
-  padding: '0.5rem 0.85rem',
+  padding: '0.4rem 0.65rem',
   borderRadius: '8px',
   border: '1px solid #cbd2d9',
   background: '#ffffff',
   color: '#1f2933',
   cursor: 'pointer',
-  fontSize: '0.9rem',
+  fontSize: '0.8rem',
 } as const;
 
 const errorStyle = {

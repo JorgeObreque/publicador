@@ -22,6 +22,11 @@ export class MediaAssetController {
     return this.mediaAssets.listImages();
   }
 
+  @Get('videos')
+  listVideos() {
+    return this.mediaAssets.listVideos();
+  }
+
   @Get(':id/thumbnail')
   async thumbnail(@Param('id') id: string, @Res({ passthrough: false }) res: Response) {
     const asset = await this.mediaAssets.fetchThumbnailStream(id);

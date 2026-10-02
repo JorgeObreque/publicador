@@ -113,6 +113,18 @@ export class MediaAssetService {
     return assets.map((asset) => this.toSummary(asset));
   }
 
+  async listVideos(): Promise<MediaAssetSummary[]> {
+    const assets = await prisma.mediaAsset.findMany({
+      where: {
+        businessId: this.businessId,
+        kind: 'VIDEO',
+        status: { not: MediaAssetStatus.ARCHIVED },
+      },
+      orderBy: { name: 'asc' },
+    });
+    return assets.map((asset) => this.toSummary(asset));
+  }
+
   async findImageForPublishing(id: string): Promise<{
     id: string;
     name: string;

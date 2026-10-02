@@ -53,3 +53,55 @@ export const attachCreative = (input: AttachCreativeInput) =>
     method: 'POST',
     body: JSON.stringify(input),
   });
+
+export type RecommendationMode =
+  | 'INITIAL'
+  | 'REGENERATE_PRIMARY_TEXT'
+  | 'REGENERATE_HEADLINE';
+
+export interface CreativeSuggestion {
+  primaryText: string;
+  headline: string;
+}
+
+/**
+ * Snapshot opcional del `CampaignBrief` aprobado por el diagnóstico
+ * comercial. Se inyecta al prompt del backend para que el copy respete la
+ * estrategia aprobada en lugar de inventar su propia dirección. Todos los
+ * campos son opcionales/nullable para mantener compatibilidad con los
+ * flujos legacy que aún no viajan con un brief.
+ */
+export interface BriefContext {
+  businessObjective?: string | null;
+  offer?: string | null;
+  primaryKpi?: string | null;
+  idealCustomerProfile?: string | null;
+  qualifyingQuestions?: string[];
+  constraints?: string[];
+  stopIf?: string | null;
+  scaleIf?: string | null;
+  primaryConversion?: string | null;
+  recommendedWeeklyAdd?: number | null;
+  primaryGoal?: string | null;
+}
+
+export interface RecommendationResponse {
+  mode: RecommendationMode;
+  suggestions: CreativeSuggestion[];
+}
+
+export interface RecommendationRequest {
+  mode: RecommendationMode;
+  serviceId: string;
+  mediaAssetId: string;
+  currentCopy?: { primaryText?: string; headline?: string };
+  context?: Record<string, unknown>;
+  briefContext?: BriefContext;
+}
+
+export const requestCreativeRecommendations = (args: RecommendationRequest) =>
+  apiFetch<RecommendationResponse>(
+    '/creatives/recommendations',
+    { method: 'POST', body: JSON.stringify(args) },
+    { cache: 'no-store' },
+  );

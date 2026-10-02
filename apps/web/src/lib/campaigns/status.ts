@@ -1,4 +1,5 @@
 import type { CampaignStatus, MetaPublishStatus } from './types';
+import type { MetaStatusView } from './meta-status';
 
 export interface CampaignDisplayStatus {
   key: string;
@@ -6,6 +7,8 @@ export interface CampaignDisplayStatus {
   description: string;
   tone: 'neutral' | 'pending' | 'paused' | 'archived' | 'error';
 }
+
+export type MetaStatus = MetaStatusView;
 
 export const displayStatus = (campaign: {
   status: CampaignStatus;

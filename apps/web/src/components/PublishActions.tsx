@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { publishCampaignPaused } from '@/lib/campaigns/api';
 import type { Campaign, MetaPublishStatus } from '@/lib/campaigns/types';
+import { ConfirmDialog } from '@/components/education/ConfirmDialog';
 
 interface Props {
   campaign: Pick<Campaign, 'id' | 'status' | 'metaPublishStatus' | 'metaPublishError'>;
@@ -14,6 +15,7 @@ export function PublishActions({ campaign, hasCreatives }: Props) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const publishing = campaign.metaPublishStatus === ('PUBLISHING' as MetaPublishStatus);
   const canPublish = hasCreatives && !publishing && campaign.status !== 'ARCHIVED';
@@ -24,6 +26,7 @@ export function PublishActions({ campaign, hasCreatives }: Props) {
     setError(null);
     try {
       await publishCampaignPaused(campaign.id);
+      setDialogOpen(false);
       router.refresh();
     } catch (err) {
       setError((err as Error).message);
@@ -67,7 +70,7 @@ export function PublishActions({ campaign, hasCreatives }: Props) {
         {canRetry ? (
           <button
             type="button"
-            onClick={handlePublish}
+            onClick={() => setDialogOpen(true)}
             disabled={submitting}
             style={{
               ...primaryButtonStyle,
@@ -80,7 +83,7 @@ export function PublishActions({ campaign, hasCreatives }: Props) {
         ) : (
           <button
             type="button"
-            onClick={handlePublish}
+            onClick={() => setDialogOpen(true)}
             disabled={!canPublish || submitting}
             style={{
               ...primaryButtonStyle,
@@ -95,6 +98,16 @@ export function PublishActions({ campaign, hasCreatives }: Props) {
       <p style={{ margin: 0, color: '#52606d', fontSize: '0.85rem' }}>
         La campaña quedará pausada en Meta. No generará gastos hasta que la actives manualmente.
       </p>
+      <ConfirmDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        title="¿Quieres enviar la campaña a Meta como pausada?"
+        description="La campaña no gastará hasta que la actives manualmente."
+        primaryLabel="Sí, enviar como pausada"
+        secondaryLabel="Cancelar"
+        onPrimary={handlePublish}
+        tone="info"
+      />
     </div>
   );
 }

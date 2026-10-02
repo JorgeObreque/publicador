@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { Logger } from '@nestjs/common';
 import { createHmac } from 'node:crypto';
 
 export interface MetaClientConfig {
@@ -18,6 +19,7 @@ export interface MetaClientConfig {
 
 export class MetaGraphClient {
   private readonly http: AxiosInstance;
+  private readonly logger = new Logger(MetaGraphClient.name);
 
   constructor(private readonly config: MetaClientConfig) {
     if (!config.accessToken) {
@@ -37,13 +39,33 @@ export class MetaGraphClient {
   }
 
   async get<T>(path: string, params: Record<string, unknown> = {}): Promise<T> {
-    const { data } = await this.http.get<T>(path, { params });
-    return data;
+    try {
+      const { data } = await this.http.get<T>(path, { params });
+      return data;
+    } catch (error) {
+      const responseBody = (error as { response?: { data?: unknown } }).response?.data;
+      const message =
+        responseBody && typeof responseBody === 'object' && 'error' in responseBody
+          ? JSON.stringify((responseBody as { error: unknown }).error)
+          : String(responseBody ?? error);
+      this.logger.error(`Meta GET ${path} -> ${message}`);
+      throw error;
+    }
   }
 
   async post<T>(path: string, body: Record<string, unknown>): Promise<T> {
-    const { data } = await this.http.post<T>(path, body);
-    return data;
+    try {
+      const { data } = await this.http.post<T>(path, body);
+      return data;
+    } catch (error) {
+      const responseBody = (error as { response?: { data?: unknown } }).response?.data;
+      const message =
+        responseBody && typeof responseBody === 'object' && 'error' in responseBody
+          ? JSON.stringify((responseBody as { error: unknown }).error)
+          : String(responseBody ?? error);
+      this.logger.error(`Meta POST ${path} -> ${message}`);
+      throw error;
+    }
   }
 
   get adAccountId(): string {

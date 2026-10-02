@@ -19,6 +19,7 @@ export interface CreateCampaignInput {
   startDate?: string;
   endDate?: string;
   notes?: string;
+  campaignBriefId?: string;
 }
 
 export const createCampaign = (input: CreateCampaignInput) =>

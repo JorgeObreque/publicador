@@ -16,7 +16,6 @@ export function StatusBadge({ status }: Props) {
   const styles = TONE_STYLES[status.tone];
   return (
     <span
-      title={status.description}
       style={{
         display: 'inline-block',
         padding: '0.25rem 0.6rem',

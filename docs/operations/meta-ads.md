@@ -32,6 +32,18 @@ Los fixtures Meta solo están habilitados con `NODE_ENV=test`. Credenciales inco
 
 `POST /api/v1/meta-ads/metrics/import` recibe `from` y `to` como días civiles `YYYY-MM-DD` de la cuenta Meta, no como instantes UTC.
 
+## Estrategia de presupuesto
+
+Para campañas con `OUTCOME_ENGAGEMENT` y optimización `CONVERSATIONS`, Meta exige coherencia entre la estrategia de presupuesto de la campaña y la del conjunto. Publicador siempre publica el presupuesto a nivel de campaña y deja el conjunto sin `daily_budget`, evitando que Meta active automáticamente `is_adset_budget_sharing_enabled`.
+
+`POST /api/v1/meta-ads/campaigns/:id/sync-budget-strategy` permite corregir campañas existentes que quedaron con presupuesto en el conjunto. Acepta:
+
+- `strategy: 'campaign'` — mueve el presupuesto al nivel de campaña y limpia el del conjunto. Requiere `dailyBudget`.
+- `strategy: 'adset'` — mantiene el presupuesto en el conjunto y desactiva Advantage Campaign Budget. Requiere `dailyBudget`.
+- `strategy: 'detect'` (por defecto) — usa el presupuesto local de la campaña en Publicador y elige `campaign`.
+
+Después de aplicar la corrección, repetir `POST /api/v1/meta-ads/campaigns/:id/publish-paused` para asegurar que los anuncios queden vinculados a la jerarquía correcta.
+
 ## Zonas horarias
 
 - Los días civiles de Insights se consultan en `Pacific/Easter`, que es la configuración de la cuenta publicitaria histórica.

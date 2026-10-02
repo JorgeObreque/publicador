@@ -5,7 +5,26 @@ const positiveAmount = z
   .refine((n) => Number.isFinite(n) && n > 0, { message: 'Debe ser un número positivo' })
   .optional();
 
-const campaignFields = {
+// Campos comunes a la hora de crear una campaña. `campaignBriefId` SOLO
+// está disponible en creación (P1-4): una vez vinculada a un brief la
+// referencia no debe modificarse (el servicio la valida como APPROVED y
+// del negocio actual). El DTO de actualización lo omite explícitamente.
+const createCampaignFields = {
+  name: z.string().trim().min(1).max(120),
+  serviceId: z.string().min(1).optional(),
+  objective: z.string().trim().min(1).max(60),
+  dailyBudget: positiveAmount,
+  lifetimeBudget: positiveAmount,
+  startDate: z.coerce.date().optional(),
+  endDate: z.coerce.date().optional(),
+  notes: z.string().max(2000).optional(),
+  campaignBriefId: z.string().min(1).optional(),
+} as const;
+
+// Campos permitidos al actualizar una campaña. NO incluye
+// `campaignBriefId` (P1-4): el brief se vincula sólo al crear y la
+// pertenencia + estado APPROVED se validan en el servicio.
+const updateCampaignFields = {
   name: z.string().trim().min(1).max(120),
   serviceId: z.string().min(1).optional(),
   objective: z.string().trim().min(1).max(60),
@@ -17,7 +36,7 @@ const campaignFields = {
 } as const;
 
 export const createCampaignSchema = z
-  .object(campaignFields)
+  .object(createCampaignFields)
   .refine(
     (v) => !(v.startDate && v.endDate) || v.startDate <= v.endDate,
     { message: 'startDate no puede ser posterior a endDate' },
@@ -29,7 +48,7 @@ export const createCampaignSchema = z
 
 export type CreateCampaignInput = z.infer<typeof createCampaignSchema>;
 
-export const updateCampaignSchema = z.object(campaignFields).partial();
+export const updateCampaignSchema = z.object(updateCampaignFields).partial();
 export type UpdateCampaignInput = z.infer<typeof updateCampaignSchema>;
 
 export const createCampaignWithCreativeSchema = z

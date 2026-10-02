@@ -8,7 +8,8 @@ import { issueForField } from '@/lib/campaigns/wizard';
 import type { ValidationIssue } from '@/lib/campaigns/wizard';
 
 interface Props {
-  assets: MediaAsset[];
+  images: MediaAsset[];
+  videos: MediaAsset[];
   draft: CampaignDraft;
   issues: ValidationIssue[];
   onChange: (updater: (draft: CampaignDraft) => CampaignDraft) => void;
@@ -17,8 +18,18 @@ interface Props {
   onPrevious: () => void;
 }
 
+type ResourceTab = 'IMAGE' | 'VIDEO';
+
+const formatBytes = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+};
+
 export function ImageStep({
-  assets,
+  images,
+  videos,
   draft,
   issues,
   onChange,
@@ -27,6 +38,7 @@ export function ImageStep({
   onPrevious,
 }: Props) {
   const selectionError = issueForField(issues, 'image', 'selectedMediaAssetId');
+  const [tab, setTab] = useState<ResourceTab>('IMAGE');
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,15 +54,31 @@ export function ImageStep({
     }
   };
 
-  const loading = false;
+  const assets = tab === 'IMAGE' ? images : videos;
+  const emptyMessage =
+    tab === 'IMAGE'
+      ? 'No hay imágenes disponibles. Sincroniza Google Drive para empezar.'
+      : 'No hay videos disponibles. Sincroniza Google Drive para empezar.';
+  const videoOnlyHint =
+    tab === 'VIDEO'
+      ? 'Los videos se registran como referencia. La publicación con video aún no está habilitada en este paso.'
+      : null;
 
   return (
     <section style={{ display: 'grid', gap: '1rem' }}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
+      <header
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: '1rem',
+          flexWrap: 'wrap',
+        }}
+      >
         <div>
-          <h2 style={{ margin: 0 }}>Elige una fotografía</h2>
+          <h2 style={{ margin: 0 }}>Imagen o video</h2>
           <p style={{ margin: '0.25rem 0 0', color: '#52606d' }}>
-            Las imágenes se muestran desde Google Drive y no se guardan en Publicador.
+            Se muestran desde Google Drive y no se guardan en Publicador.
           </p>
         </div>
         <button
@@ -69,15 +97,37 @@ export function ImageStep({
         </button>
       </header>
 
+      <nav style={{ display: 'flex', gap: '0.5rem' }} aria-label="Tipo de recurso">
+        <TabButton
+          label={`Imágenes (${images.length})`}
+          active={tab === 'IMAGE'}
+          onClick={() => setTab('IMAGE')}
+        />
+        <TabButton
+          label={`Videos (${videos.length})`}
+          active={tab === 'VIDEO'}
+          onClick={() => setTab('VIDEO')}
+        />
+      </nav>
+
       {error && <p style={errorStyle}>{error}</p>}
       {selectionError && <p style={errorStyle}>{selectionError}</p>}
-
-      {loading ? (
-        <p style={{ color: '#52606d' }}>Cargando galería…</p>
-      ) : assets.length === 0 ? (
-        <p style={{ color: '#52606d' }}>
-          No hay imágenes disponibles. Sincroniza Google Drive para empezar.
+      {videoOnlyHint && (
+        <p
+          style={{
+            color: '#92400e',
+            background: '#fef3c7',
+            padding: '0.75rem',
+            borderRadius: '8px',
+            margin: 0,
+          }}
+        >
+          {videoOnlyHint}
         </p>
+      )}
+
+      {assets.length === 0 ? (
+        <p style={{ color: '#52606d' }}>{emptyMessage}</p>
       ) : (
         <ul
           style={{
@@ -95,7 +145,9 @@ export function ImageStep({
               <li key={asset.id}>
                 <button
                   type="button"
-                  onClick={() => onChange((current) => ({ ...current, selectedMediaAssetId: asset.id }))}
+                  onClick={() =>
+                    onChange((current) => ({ ...current, selectedMediaAssetId: asset.id }))
+                  }
                   style={{
                     width: '100%',
                     padding: 0,
@@ -106,14 +158,7 @@ export function ImageStep({
                     overflow: 'hidden',
                   }}
                 >
-                  <Image
-                    src={asset.thumbnailUrl}
-                    alt={asset.name}
-                    width={320}
-                    height={200}
-                    unoptimized
-                    style={{ width: '100%', height: 'auto', display: 'block' }}
-                  />
+                  <ResourcePreview asset={asset} />
                   <span
                     style={{
                       display: 'block',
@@ -124,7 +169,10 @@ export function ImageStep({
                   >
                     <strong style={{ display: 'block', color: '#1f2933' }}>{asset.name}</strong>
                     <span style={{ color: '#52606d' }}>
-                      {asset.mimeType.replace('image/', '').toUpperCase()}
+                      {asset.kind === 'IMAGE'
+                        ? asset.mimeType.replace('image/', '').toUpperCase()
+                        : asset.mimeType.replace('video/', '').toUpperCase()}{' '}
+                      · {formatBytes(asset.sizeBytes)}
                       {asset.requiresConversion && ' · se convierte al publicar'}
                       {asset.status !== 'READY' && ' · no disponible'}
                     </span>
@@ -154,6 +202,60 @@ export function ImageStep({
         </button>
       </div>
     </section>
+  );
+}
+
+function TabButton({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      style={{
+        padding: '0.45rem 0.85rem',
+        borderRadius: '999px',
+        border: '1px solid',
+        borderColor: active ? '#1f2933' : '#cbd2d9',
+        background: active ? '#1f2933' : '#ffffff',
+        color: active ? '#ffffff' : '#1f2933',
+        cursor: 'pointer',
+        fontSize: '0.9rem',
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function ResourcePreview({ asset }: { asset: MediaAsset }) {
+  if (asset.kind === 'VIDEO') {
+    return (
+      <video
+        src={asset.thumbnailUrl}
+        muted
+        playsInline
+        preload="metadata"
+        style={{ width: '100%', height: 'auto', display: 'block', background: '#1f2933' }}
+      />
+    );
+  }
+  return (
+    <Image
+      src={asset.thumbnailUrl}
+      alt={asset.name}
+      width={320}
+      height={200}
+      unoptimized
+      style={{ width: '100%', height: 'auto', display: 'block' }}
+    />
   );
 }
 

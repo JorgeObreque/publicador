@@ -1,36 +1,44 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { listImages, syncDrive } from '@/lib/media/api';
+import { listImages, listVideos, syncDrive } from '@/lib/media/api';
 import type { MediaAsset } from '@/lib/media/types';
 import type { ServiceSummary } from '@/lib/services/api';
 import { listServices } from '@/lib/services/api';
 import { CampaignWizardNav } from '@/components/CampaignWizardNav';
 import { useCampaignWizard } from '@/lib/campaigns/use-campaign-wizard';
+import type { CampaignDraft } from '@/lib/campaigns/wizard';
 import { ServiceStep } from './ServiceStep';
 import { ImageStep } from './ImageStep';
 import { CopyStep } from './CopyStep';
 import { BudgetStep } from './BudgetStep';
 import { ReviewStep } from './ReviewStep';
 
-export function CampaignWizard() {
-  const wizard = useCampaignWizard();
+interface Props {
+  initialDraft?: CampaignDraft;
+}
+
+export function CampaignWizard({ initialDraft }: Props = {}) {
+  const wizard = useCampaignWizard(initialDraft);
   const [services, setServices] = useState<ServiceSummary[]>([]);
-  const [assets, setAssets] = useState<MediaAsset[]>([]);
+  const [images, setImages] = useState<MediaAsset[]>([]);
+  const [videos, setVideos] = useState<MediaAsset[]>([]);
   const [bootError, setBootError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([listServices(), listImages()])
-      .then(([serviceList, imageList]) => {
+    Promise.all([listServices(), listImages(), listVideos()])
+      .then(([serviceList, imageList, videoList]) => {
         setServices(serviceList);
-        setAssets(imageList);
+        setImages(imageList);
+        setVideos(videoList);
       })
       .catch((err: Error) => setBootError(err.message));
   }, []);
 
   const refreshAssets = useCallback(async () => {
-    const imageList = await listImages();
-    setAssets(imageList);
+    const [imageList, videoList] = await Promise.all([listImages(), listVideos()]);
+    setImages(imageList);
+    setVideos(videoList);
   }, []);
 
   const handleSync = useCallback(async () => {
@@ -38,8 +46,9 @@ export function CampaignWizard() {
     await refreshAssets();
   }, [refreshAssets]);
 
+  const allAssets = [...images, ...videos];
   const selectedAsset =
-    assets.find((asset) => asset.id === wizard.draft.selectedMediaAssetId) ?? null;
+    allAssets.find((asset) => asset.id === wizard.draft.selectedMediaAssetId) ?? null;
 
   if (bootError) {
     return <p style={{ color: '#991b1b' }}>No pudimos preparar el asistente: {bootError}</p>;
@@ -59,7 +68,8 @@ export function CampaignWizard() {
       )}
       {wizard.stepId === 'image' && (
         <ImageStep
-          assets={assets}
+          images={images}
+          videos={videos}
           draft={wizard.draft}
           issues={wizard.issues}
           onChange={wizard.setDraft}

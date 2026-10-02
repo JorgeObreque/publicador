@@ -49,6 +49,7 @@ export class MetaAdsService {
     const local = await prisma.campaign.findFirst({
       where: { id: localCampaignId, businessId: this.businessId },
       include: {
+        campaignBrief: { select: { costPerAcquisitionCap: true } },
         campaignCreatives: {
           include: { creative: { include: { mediaAsset: true } } },
         },
@@ -133,10 +134,14 @@ export class MetaAdsService {
         },
       });
 
+      const localDailyBudget = local.dailyBudget ? Number(local.dailyBudget) : undefined;
+      const localLifetimeBudget = local.lifetimeBudget ? Number(local.lifetimeBudget) : undefined;
       const remoteCampaign = await this.source.ensurePausedCampaign({
         name: this.remoteName(local.name, local.id, 'campaign'),
         objective: 'OUTCOME_ENGAGEMENT',
         existingId: local.metaCampaignId ?? undefined,
+        dailyBudget: localDailyBudget,
+        lifetimeBudget: localLifetimeBudget,
       });
       if (!local.metaCampaignId) {
         await this.updateClaimedCampaign(local.id, attemptId, {
@@ -144,6 +149,12 @@ export class MetaAdsService {
             metaPublishFingerprint: campaignFingerprint,
         });
       }
+
+      const briefCpaCap = local.campaignBrief?.costPerAcquisitionCap;
+      const bidAmount =
+        briefCpaCap !== null && briefCpaCap !== undefined
+          ? Number(briefCpaCap)
+          : await this.resolveProfileCpaCap();
 
       const remoteAdSet = await this.source.ensurePausedAdSet({
         name: this.remoteName(local.name, local.id, 'adset'),
@@ -153,6 +164,10 @@ export class MetaAdsService {
         startTime: local.startDate ?? undefined,
         endTime: local.endDate ?? undefined,
         existingId: local.metaAdSetId ?? undefined,
+        bidAmount:
+          bidAmount !== null && bidAmount !== undefined && Number.isFinite(bidAmount) && bidAmount > 0
+            ? bidAmount
+            : undefined,
       });
       await this.updateClaimedCampaign(local.id, attemptId, {
           metaCampaignId: remoteCampaign.id,
@@ -237,6 +252,62 @@ export class MetaAdsService {
     }
   }
 
+  fetchOverview(limit?: number) {
+    return this.source.fetchOverview({ limit });
+  }
+
+  async importRemoteCampaigns(options: { limit?: number } = {}) {
+    const overview = await this.source.fetchOverview({ limit: options.limit });
+    let upserts = 0;
+    for (const entry of overview.campaigns) {
+      const remote = entry.campaign;
+      await prisma.metaRemoteCampaign.upsert({
+        where: {
+          businessId_metaCampaignId: {
+            businessId: this.businessId,
+            metaCampaignId: remote.metaCampaignId,
+          },
+        },
+        update: {
+          name: remote.name,
+          status: remote.status,
+          effectiveStatus: remote.effectiveStatus ?? null,
+          objective: remote.objective ?? null,
+          dailyBudget: remote.dailyBudget ?? null,
+          lifetimeBudget: remote.lifetimeBudget ?? null,
+          startTime: remote.startTime ? new Date(remote.startTime) : null,
+          stopTime: remote.stopTime ? new Date(remote.stopTime) : null,
+          fetchedAt: new Date(),
+        },
+        create: {
+          businessId: this.businessId,
+          metaCampaignId: remote.metaCampaignId,
+          name: remote.name,
+          status: remote.status,
+          effectiveStatus: remote.effectiveStatus ?? null,
+          objective: remote.objective ?? null,
+          dailyBudget: remote.dailyBudget ?? null,
+          lifetimeBudget: remote.lifetimeBudget ?? null,
+          startTime: remote.startTime ? new Date(remote.startTime) : null,
+          stopTime: remote.stopTime ? new Date(remote.stopTime) : null,
+        },
+      });
+      upserts += 1;
+    }
+    return {
+      upserts,
+      account: overview.account,
+      fetchedAt: overview.fetchedAt,
+    };
+  }
+
+  async listRemoteCampaigns() {
+    return prisma.metaRemoteCampaign.findMany({
+      where: { businessId: this.businessId },
+      orderBy: { name: 'asc' },
+    });
+  }
+
   async importCampaigns() {
     const remote = await this.source.fetchCampaigns();
     for (const campaign of remote) {
@@ -260,11 +331,14 @@ export class MetaAdsService {
     const records = await this.source.fetchMetrics(from, to);
     let upserts = 0;
     let skipped = 0;
+    let remoteUpserts = 0;
     for (const record of records) {
       const campaign = await prisma.campaign.findFirst({
         where: { businessId: this.businessId, metaCampaignId: record.metaCampaignId },
       });
       if (!campaign) {
+        const stored = await this.recordRemoteMetric(record);
+        if (stored) remoteUpserts += 1;
         skipped += 1;
         continue;
       }
@@ -317,7 +391,55 @@ export class MetaAdsService {
       }
       upserts += 1;
     }
-    return { upserts, skipped };
+    return { upserts, skipped, remoteUpserts };
+  }
+
+  private async recordRemoteMetric(record: {
+    date: string;
+    metaCampaignId: string;
+    metaAdSetId?: string;
+    metaAdId?: string;
+    adSetName?: string;
+    adName?: string;
+    impressions: number;
+    clicks: number;
+    spend: number;
+    leads: number;
+  }): Promise<boolean> {
+    const remote = await prisma.metaRemoteCampaign.findFirst({
+      where: { businessId: this.businessId, metaCampaignId: record.metaCampaignId },
+    });
+    if (!remote) return false;
+    const date = this.parseMetaDay(record.date);
+    const data = {
+      businessId: this.businessId,
+      metaCampaignId: record.metaCampaignId,
+      metaAdSetId: record.metaAdSetId ?? null,
+      metaAdId: record.metaAdId ?? null,
+      adSetName: record.adSetName ?? null,
+      adName: record.adName ?? null,
+      date,
+      impressions: record.impressions,
+      clicks: record.clicks,
+      spend: new Prisma.Decimal(record.spend),
+      leads: record.leads,
+    };
+    if (!record.metaAdId) {
+      return false;
+    }
+    await prisma.metaRemoteMetricDaily.upsert({
+      where: {
+        businessId_metaCampaignId_metaAdId_date: {
+          businessId: this.businessId,
+          metaCampaignId: record.metaCampaignId,
+          metaAdId: record.metaAdId,
+          date,
+        },
+      },
+      update: data,
+      create: data,
+    });
+    return true;
   }
 
   private validatePublishable(campaign: {
@@ -475,5 +597,54 @@ export class MetaAdsService {
   private errorMessage(error: unknown) {
     if (error instanceof Error) return error.message;
     return String(error);
+  }
+
+  private async resolveProfileCpaCap(): Promise<number | null> {
+    const profile = await prisma.businessProfile.findUnique({
+      where: { businessId: this.businessId },
+      select: { costPerAcquisitionCap: true },
+    });
+    const cap = profile?.costPerAcquisitionCap;
+    return cap !== null && cap !== undefined ? Number(cap) : null;
+  }
+
+  async syncBudgetStrategy(
+    localCampaignId: string,
+    input: { strategy: 'campaign' | 'adset' | 'detect'; dailyBudget?: number },
+  ) {
+    const local = await prisma.campaign.findFirst({
+      where: { id: localCampaignId, businessId: this.businessId },
+    });
+    if (!local) throw new NotFoundException(`Campaign ${localCampaignId} not found`);
+    if (!local.metaCampaignId || !local.metaAdSetId) {
+      throw new BadRequestException(
+        'La campaña aún no fue publicada en Meta; no hay IDs remotos para sincronizar.',
+      );
+    }
+
+    const dailyBudget =
+      input.dailyBudget ?? Number(local.dailyBudget ?? local.lifetimeBudget ?? 0);
+    if (!Number.isSafeInteger(dailyBudget) || dailyBudget <= 0) {
+      throw new BadRequestException(
+        'No se pudo determinar el presupuesto diario; envía dailyBudget explícito.',
+      );
+    }
+
+    const strategy: 'campaign' | 'adset' = input.strategy === 'detect' ? 'campaign' : input.strategy;
+
+    if (strategy === 'campaign') {
+      return this.source.moveBudgetToCampaign({
+        campaignMetaId: local.metaCampaignId,
+        adSetMetaId: local.metaAdSetId,
+        dailyBudget,
+      });
+    }
+
+    return this.source.keepAdSetBudget({
+      campaignMetaId: local.metaCampaignId,
+      adSetMetaId: local.metaAdSetId,
+      dailyBudget,
+      enableAdSetBudgetSharing: false,
+    });
   }
 }

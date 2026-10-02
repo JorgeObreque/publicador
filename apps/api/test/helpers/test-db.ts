@@ -39,6 +39,7 @@ export async function resetDatabase() {
     prisma.metaEntityMapping.deleteMany(),
     prisma.metaAdAccount.deleteMany(),
     prisma.campaignCreative.deleteMany(),
+    prisma.campaignBrief.deleteMany(),
     prisma.creative.deleteMany(),
     prisma.campaign.deleteMany(),
     prisma.service.deleteMany(),

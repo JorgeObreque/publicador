@@ -25,6 +25,15 @@ export const listImages = async (): Promise<MediaAsset[]> => {
   return data.map((asset) => withThumb(asset, apiBaseUrl));
 };
 
+export const listVideos = async (): Promise<MediaAsset[]> => {
+  const data = await apiFetch<Omit<MediaAsset, 'thumbnailUrl'>[]>(
+    '/media-assets/videos',
+    undefined,
+    { cache: 'no-store' },
+  );
+  return data.map((asset) => withThumb(asset, apiBaseUrl));
+};
+
 export const syncDrive = () =>
   apiFetch<MediaAssetSyncResult>('/media-assets/drive/sync', { method: 'POST' });
 

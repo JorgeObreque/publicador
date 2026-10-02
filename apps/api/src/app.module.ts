@@ -7,6 +7,7 @@ import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { CreativesModule } from './modules/creatives/creatives.module';
 import { ServicesModule } from './modules/services/services.module';
 import { MetaAdsModule } from './modules/meta-ads/meta-ads.module';
+import { PerformanceModule } from './modules/performance/performance.module';
 import { TrackingModule } from './modules/tracking/tracking.module';
 import { ConversionsModule } from './modules/conversions/conversions.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
@@ -20,16 +21,26 @@ import { MediaAssetModule } from './modules/media-asset/media-asset.module';
 import { JobsModule } from './jobs/jobs.module';
 import { HealthModule } from './modules/health/health.module';
 import { SerializersModule } from './shared/serializers/serializers.module';
+import { AnalyzeModule } from './modules/analyze/analyze.module';
+import { CreativeRecommendationsModule } from './modules/creative-recommendations/creative-recommendations.module';
+import { BusinessProfileModule } from './modules/business-profile/business-profile.module';
+import { CampaignBriefModule } from './modules/campaign-brief/campaign-brief.module';
+import { CommercialDiagnosisModule } from './modules/commercial-diagnosis/commercial-diagnosis.module';
+import { TerritoryModule } from './modules/territory/territory.module';
+import { CommuneContextModule } from './modules/commune-context/commune-context.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, cache: true }),
     ScheduleModule.forRoot(),
     BusinessContextModule,
+    TerritoryModule,
+    CommuneContextModule,
     CampaignsModule,
     CreativesModule,
     ServicesModule,
     MetaAdsModule,
+    PerformanceModule,
     TrackingModule,
     ConversionsModule,
     AnalyticsModule,
@@ -43,6 +54,11 @@ import { SerializersModule } from './shared/serializers/serializers.module';
     JobsModule,
     HealthModule,
     SerializersModule,
+    AnalyzeModule,
+    CreativeRecommendationsModule,
+    BusinessProfileModule,
+    CampaignBriefModule,
+    CommercialDiagnosisModule,
   ],
   providers: [
     {

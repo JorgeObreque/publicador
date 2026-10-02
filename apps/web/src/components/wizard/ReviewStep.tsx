@@ -34,29 +34,35 @@ export function ReviewStep({ draft, issues, services, selectedAsset, maxSpend, o
       const result = await createCampaignWithCreative({
         campaign: {
           name: draft.name,
-          objective: 'Recibir consultas por WhatsApp',
+          objective: draft.objective || 'Recibir consultas por WhatsApp',
           serviceId: draft.serviceId ?? undefined,
           dailyBudget: Number(draft.dailyBudget),
           startDate: draft.startDate || undefined,
           endDate: draft.endDate || undefined,
           notes: draft.notes || undefined,
+          campaignBriefId: draft.briefId ?? undefined,
         },
         creative: {
           name: draft.headline.trim().slice(0, 80) || draft.name.trim().slice(0, 80),
-          format: 'image',
+          format: selectedAsset && selectedAsset.kind === 'VIDEO' ? 'video' : 'image',
           primaryText: draft.primaryText.trim(),
           headline: draft.headline.trim(),
-          description: draft.description.trim() || undefined,
           callToAction: 'WHATSAPP_MESSAGE',
           mediaAssetId: draft.selectedMediaAssetId,
         },
         isControl: true,
       });
-      if (publishAfter) {
+      const canPublish = !selectedAsset || selectedAsset.kind !== 'VIDEO';
+      if (publishAfter && canPublish) {
         setPublishing(true);
         await publishCampaignPaused(result.campaign.id);
       }
-      router.push(`/campaigns/${result.campaign.id}`);
+      // Tras crear la ejecución volvemos al plan comercial del que proviene.
+      // El guard de /campaigns/new garantiza que `draft.briefId` llega
+      // poblado, pero mantenemos el fallback al listado por si llega un
+      // flujo legacy sin brief.
+      const returnHref = draft.briefId ? `/campaign-brief/${draft.briefId}` : '/campaign-brief';
+      router.push(returnHref);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -85,35 +91,92 @@ export function ReviewStep({ draft, issues, services, selectedAsset, maxSpend, o
         )}
       </ReviewBlock>
 
+      {draft.briefId ? (
+        <ReviewBlock title="Resumen del objetivo comercial">
+          <ul
+            style={{
+              margin: '0.25rem 0 0',
+              padding: '0 0 0 1.1rem',
+              color: '#1f2933',
+              display: 'grid',
+              gap: '0.35rem',
+            }}
+          >
+            {draft.briefObjective ? (
+              <li>
+                <strong>Objetivo:</strong> {draft.briefObjective}
+              </li>
+            ) : null}
+            {draft.briefKpi ? (
+              <li>
+                <strong>Indicador clave de rendimiento (KPI) principal:</strong>{' '}
+                {draft.briefKpi}
+              </li>
+            ) : null}
+            {draft.briefWeeklyAdd ? (
+              <li>
+                <strong>Meta semanal sugerida:</strong> {draft.briefWeeklyAdd}
+              </li>
+            ) : null}
+            {draft.briefStopIf ? (
+              <li>
+                <strong>Detener si:</strong> {draft.briefStopIf}
+              </li>
+            ) : null}
+            {draft.briefScaleIf ? (
+              <li>
+                <strong>Aumentar inversión si:</strong> {draft.briefScaleIf}
+              </li>
+            ) : null}
+          </ul>
+          {draft.objective ? (
+            <p style={{ ...reviewText, marginTop: '0.5rem', color: '#52606d' }}>
+              <strong>Objetivo guardado:</strong> {draft.objective}
+            </p>
+          ) : null}
+        </ReviewBlock>
+      ) : null}
+
       <ReviewBlock title="Mensaje">
         <p style={reviewText}>
           <strong>{draft.headline || 'Sin título'}</strong>
         </p>
         <p style={reviewText}>{draft.primaryText || 'Sin texto principal.'}</p>
-        {draft.description && <p style={reviewText}>{draft.description}</p>}
       </ReviewBlock>
 
-      <ReviewBlock title="Fotografía">
+      <ReviewBlock title={selectedAsset && selectedAsset.kind === 'VIDEO' ? 'Video' : 'Fotografía'}>
         {selectedAsset ? (
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-            <Image
-              src={selectedAsset.thumbnailUrl}
-              alt={selectedAsset.name}
-              width={160}
-              height={100}
-              unoptimized
-              style={{ borderRadius: '8px', objectFit: 'cover' }}
-            />
+            {selectedAsset.kind === 'VIDEO' ? (
+              <video
+                src={selectedAsset.thumbnailUrl}
+                muted
+                playsInline
+                preload="metadata"
+                style={{ width: 160, height: 100, objectFit: 'cover', borderRadius: '8px', background: '#1f2933' }}
+              />
+            ) : (
+              <Image
+                src={selectedAsset.thumbnailUrl}
+                alt={selectedAsset.name}
+                width={160}
+                height={100}
+                unoptimized
+                style={{ borderRadius: '8px', objectFit: 'cover' }}
+              />
+            )}
             <div>
               <p style={{ margin: 0, fontWeight: 600 }}>{selectedAsset.name}</p>
               <p style={{ margin: 0, color: '#52606d', fontSize: '0.85rem' }}>
-                {selectedAsset.mimeType.replace('image/', '').toUpperCase()}
+                {selectedAsset.kind === 'VIDEO'
+                  ? `${selectedAsset.mimeType.replace('video/', '').toUpperCase()} · video`
+                  : selectedAsset.mimeType.replace('image/', '').toUpperCase()}
                 {selectedAsset.requiresConversion && ' · se convierte al publicar'}
               </p>
             </div>
           </div>
         ) : (
-          <p style={errorText}>Selecciona una fotografía antes de continuar.</p>
+          <p style={errorText}>Selecciona un recurso antes de continuar.</p>
         )}
       </ReviewBlock>
 
@@ -127,6 +190,45 @@ export function ReviewStep({ draft, issues, services, selectedAsset, maxSpend, o
             Gasto máximo estimado: <strong>{formatCurrency(maxSpend)}</strong>
           </p>
         )}
+        <div
+          style={{
+            margin: '0.5rem 0 0',
+            display: 'flex',
+            gap: '0.4rem',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
+          {draft.recommendedDailyBudget ? (
+            draft.dailyBudget === draft.recommendedDailyBudget &&
+            draft.startDate === draft.recommendedStartDate &&
+            draft.endDate === draft.recommendedEndDate ? (
+              <span
+                data-testid="review-budget-source"
+                data-source="recommended"
+                style={badgeStyle('#dcfce7', '#166534', '#bbf7d0')}
+              >
+                Recomendado por el plan
+              </span>
+            ) : (
+              <span
+                data-testid="review-budget-source"
+                data-source="custom"
+                style={badgeStyle('#f1f5f9', '#52606d', '#cbd2d9')}
+              >
+                Personalizado (modificado: plan poco fiel)
+              </span>
+            )
+          ) : (
+            <span
+              data-testid="review-budget-source"
+              data-source="custom"
+              style={badgeStyle('#f1f5f9', '#52606d', '#cbd2d9')}
+            >
+              Personalizado
+            </span>
+          )}
+        </div>
       </ReviewBlock>
 
       {blockingIssues > 0 && (
@@ -157,17 +259,40 @@ export function ReviewStep({ draft, issues, services, selectedAsset, maxSpend, o
           <button
             type="button"
             onClick={() => handleSubmit(true)}
-            disabled={submitting || blockingIssues > 0}
+            disabled={
+              submitting ||
+              blockingIssues > 0 ||
+              (selectedAsset !== null && selectedAsset.kind === 'VIDEO')
+            }
             style={{
               ...primaryButtonStyle,
-              opacity: blockingIssues === 0 && !submitting ? 1 : 0.5,
-              cursor: blockingIssues === 0 && !submitting ? 'pointer' : 'not-allowed',
+              opacity:
+                blockingIssues === 0 && !submitting && (selectedAsset === null || selectedAsset.kind !== 'VIDEO')
+                  ? 1
+                  : 0.5,
+              cursor:
+                blockingIssues === 0 && !submitting && (selectedAsset === null || selectedAsset.kind !== 'VIDEO')
+                  ? 'pointer'
+                  : 'not-allowed',
             }}
           >
             {publishing ? 'Enviando a Meta…' : 'Crear y enviar a Meta como pausada'}
           </button>
         </div>
       </div>
+      {selectedAsset && selectedAsset.kind === 'VIDEO' && (
+        <p
+          style={{
+            color: '#92400e',
+            background: '#fef3c7',
+            padding: '0.75rem',
+            borderRadius: '8px',
+            margin: 0,
+          }}
+        >
+          La publicación con video aún no está habilitada. Guarda el borrador para registrar el recurso.
+        </p>
+      )}
     </section>
   );
 }
@@ -192,6 +317,22 @@ const reviewText = {
   margin: '0.25rem 0 0',
   color: '#1f2933',
 } as const;
+
+const badgeStyle = (
+  background: string,
+  color: string,
+  border: string,
+): React.CSSProperties => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  padding: '0.2rem 0.6rem',
+  borderRadius: '999px',
+  background,
+  color,
+  border: `1px solid ${border}`,
+  fontSize: '0.75rem',
+  fontWeight: 600,
+});
 
 const errorText = {
   margin: 0,

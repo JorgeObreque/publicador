@@ -13,7 +13,8 @@ interface NavLink {
 
 const NAV: NavLink[] = [
   { href: '/', label: 'Inicio' },
-  { href: '/campaigns', label: 'Campañas' },
+  { href: '/overview', label: 'Cuenta' },
+  { href: '/campaign-brief', label: 'Planes comerciales' },
   { href: '/appointments', label: 'Citas' },
 ];
 

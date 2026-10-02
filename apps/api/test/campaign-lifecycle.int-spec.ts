@@ -15,13 +15,40 @@ describe('Campaign lifecycle (integration)', () => {
     const easyAppointments = app.get(EasyAppointmentsService);
     const mediaAssets = app.get(MediaAssetService);
 
+    // Toda campaña operativa debe partir de un brief aprobado (P1-4):
+    // creamos uno mínimo en estado APPROVED antes de lanzar la campaña.
+    const service = await prisma.service.create({
+      data: {
+        businessId: process.env.BUSINESS_ID ?? 'test-business',
+        name: 'Balayage',
+        price: 95_500,
+        currency: 'CLP',
+        duration: 120,
+        isActive: true,
+      },
+    });
+    const brief = await request(app.getHttpServer())
+      .post('/api/v1/campaign-briefs')
+      .send({
+        title: 'Balayage Otoño Brief',
+        serviceId: service.id,
+        businessObjective: 'Conseguir 5 evaluaciones de balayage en 14 días',
+        offer: 'Evaluación + 20% descuento en la primera sesión',
+        primaryKpi: 'Evaluaciones',
+      })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/api/v1/campaign-briefs/${brief.body.id}/approve`)
+      .expect(201);
+
     const campaign = await request(app.getHttpServer())
       .post('/api/v1/campaigns')
       .send({
         name: 'Balayage Otoño',
         objective: 'whatsapp',
-        serviceId: undefined,
+        serviceId: service.id,
         dailyBudget: 5000,
+        campaignBriefId: brief.body.id,
       })
       .expect(201);
 

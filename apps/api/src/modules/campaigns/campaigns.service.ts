@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { CampaignStatus, MediaAssetStatus, Prisma } from '@prisma/client';
+import { CampaignBriefStatus, CampaignStatus, MediaAssetStatus, Prisma } from '@prisma/client';
 import { prisma } from '@publicador/database';
 import { BusinessContextResolver } from '../../shared/business-context/business-context.resolver';
 import {
@@ -10,6 +10,20 @@ import {
 
 const CAMPAIGN_CODE = (campaignId: string) => `CMP-${campaignId.slice(-6).toUpperCase()}`;
 
+type CampaignLike = {
+  dailyBudget: Prisma.Decimal | null;
+  lifetimeBudget: Prisma.Decimal | null;
+};
+
+const serializeBudgets = <T extends CampaignLike>(campaign: T): T => ({
+  ...campaign,
+  dailyBudget: campaign.dailyBudget ? campaign.dailyBudget.toString() : null,
+  lifetimeBudget: campaign.lifetimeBudget ? campaign.lifetimeBudget.toString() : null,
+});
+
+const serializeCampaignRecord = <T extends CampaignLike>(campaign: T | null): T | null =>
+  campaign ? serializeBudgets(campaign) : campaign;
+
 @Injectable()
 export class CampaignsService {
   constructor(private readonly businessContext: BusinessContextResolver) {}
@@ -18,11 +32,51 @@ export class CampaignsService {
     return this.businessContext.resolve().businessId;
   }
 
-  list() {
-    return prisma.campaign.findMany({
-      where: { businessId: this.businessId },
-      orderBy: { createdAt: 'desc' },
+  /**
+   * Verifica que `campaignBriefId` (cuando está presente) pertenezca al
+   * negocio actual y esté en estado `APPROVED`. Sin esto, una campaña
+   * podría vincular un brief de otro negocio o un brief aún en DRAFT.
+   * Lanza `BadRequestException` con un mensaje accionable si falla (P1-4).
+   */
+  private async assertBriefIsOwnedAndApproved(
+    campaignBriefId: string | undefined,
+  ): Promise<void> {
+    if (!campaignBriefId) return;
+    const brief = await prisma.campaignBrief.findFirst({
+      where: { id: campaignBriefId, businessId: this.businessId },
+      select: { id: true, status: true },
     });
+    if (!brief) {
+      throw new BadRequestException(
+        `El brief ${campaignBriefId} no pertenece al negocio actual`,
+      );
+    }
+    if (brief.status !== CampaignBriefStatus.APPROVED) {
+      throw new BadRequestException(
+        `El brief ${campaignBriefId} aún no está aprobado (estado: ${brief.status})`,
+      );
+    }
+  }
+
+  /**
+   * Lista las campañas operativas del negocio. La API pública SOLO
+   * expone campañas vinculadas a un brief aprobado
+   * (`campaignBriefId: { not: null }`): las huérfanas (briefs borrados,
+   * campañas legacy creadas antes de P1-4) quedan ocultas al consumidor
+   * HTTP porque ya no son una fuente fiable de verdad publicitaria.
+   * Si la UI necesita el detalle de una campaña huérfana puntual puede
+   * usar `findOne()` por id (mantenido por compatibilidad interna).
+   */
+  list() {
+    return prisma.campaign
+      .findMany({
+        where: {
+          businessId: this.businessId,
+          campaignBriefId: { not: null },
+        },
+        orderBy: { createdAt: 'desc' },
+      })
+      .then((rows) => rows.map(serializeBudgets));
   }
 
   async findOne(id: string) {
@@ -31,10 +85,20 @@ export class CampaignsService {
       include: { campaignCreatives: { include: { creative: true } } },
     });
     if (!campaign) throw new NotFoundException(`Campaign ${id} not found`);
-    return campaign;
+    return serializeBudgets(campaign);
   }
 
-  create(input: CreateCampaignInput) {
+  async create(input: CreateCampaignInput) {
+    // Cierra la puerta a campañas huérfanas: toda campaña operativa debe
+    // nacer desde un plan (`CampaignBrief`) aprobado. Sin brief no hay
+    // objetivo comercial, ni KPI, ni reglas de decisión — sólo presupuesto
+    // quemándose en Meta.
+    if (!input.campaignBriefId) {
+      throw new BadRequestException(
+        'Debes iniciar la campaña desde un plan aprobado. Crea o selecciona un CampaignBrief aprobado y vuelve a intentarlo.',
+      );
+    }
+    await this.assertBriefIsOwnedAndApproved(input.campaignBriefId);
     return prisma.campaign.create({
       data: {
         businessId: this.businessId,
@@ -50,6 +114,7 @@ export class CampaignsService {
         startDate: input.startDate,
         endDate: input.endDate,
         notes: input.notes,
+        campaignBriefId: input.campaignBriefId,
         status: CampaignStatus.DRAFT,
       },
     });
@@ -95,6 +160,16 @@ export class CampaignsService {
   }
 
   async createWithCreative(input: CreateCampaignWithCreativeInput) {
+    // Igual que en `create`: toda campaña operativa (con o sin creativo)
+    // debe partir de un plan aprobado. La UI ya oculta el wizard cuando
+    // no hay un brief seleccionado, pero blindamos el backend para que
+    // ningún cliente (legacy, tests, integraciones) cree huérfanas.
+    if (!input.campaign.campaignBriefId) {
+      throw new BadRequestException(
+        'Debes iniciar la campaña desde un plan aprobado. Crea o selecciona un CampaignBrief aprobado y vuelve a intentarlo.',
+      );
+    }
+    await this.assertBriefIsOwnedAndApproved(input.campaign.campaignBriefId);
     const mediaAsset = await prisma.mediaAsset.findFirst({
       where: {
         id: input.creative.mediaAssetId,
@@ -134,6 +209,7 @@ export class CampaignsService {
           startDate: input.campaign.startDate,
           endDate: input.campaign.endDate,
           notes: input.campaign.notes,
+          campaignBriefId: input.campaign.campaignBriefId,
           status: CampaignStatus.DRAFT,
         },
       });
@@ -163,14 +239,16 @@ export class CampaignsService {
       });
 
       return {
-        campaign: await tx.campaign.findFirst({
-          where: { id: campaign.id },
-          include: {
-            campaignCreatives: {
-              include: { creative: { include: { mediaAsset: true } } },
+        campaign: serializeCampaignRecord(
+          (await tx.campaign.findFirst({
+            where: { id: campaign.id },
+            include: {
+              campaignCreatives: {
+                include: { creative: { include: { mediaAsset: true } } },
+              },
             },
-          },
-        }),
+          })) as unknown as CampaignLike | null,
+        ),
         creative,
         attachment,
       };

@@ -3,11 +3,13 @@ import {
   MetaAdDraft,
   MetaAdsSource,
   MetaAdSetDraft,
+  MetaBudgetStrategyResult,
   MetaCampaignDraft,
   MetaCampaignRecord,
   MetaCreativeDraft,
   MetaMetricRecord,
   MetaPreflightResult,
+  MetaRemoteOverview,
   MetaRemoteRecord,
 } from './meta-ads.types';
 
@@ -100,6 +102,41 @@ export class FixtureMetaAdsSource implements MetaAdsSource {
     );
   }
 
+  fetchOverview(): Promise<MetaRemoteOverview> {
+    return Promise.resolve({
+      account: { id: 'act-fixture', name: 'Fixture account', currency: 'CLP', timezone: 'Pacific/Easter' },
+      campaigns: this.campaigns.map((campaign) => ({
+        campaign: {
+          metaCampaignId: campaign.id,
+          name: campaign.name,
+          status: campaign.status,
+          objective: campaign.objective,
+          dailyBudget: String(campaign.dailyBudget || ''),
+          sourceMeta: false,
+        },
+        adSets: this.adSets
+          .filter((adSet) => adSet.id.startsWith('adset-') || adSet.id.includes('-'))
+          .map((adSet) => ({
+            adSet: {
+              metaAdSetId: adSet.id,
+              campaignMetaId: campaign.id,
+              name: adSet.name,
+              status: adSet.status ?? 'PAUSED',
+            },
+            ads: this.ads
+              .filter((ad) => ad.id.startsWith(`${adSet.id.split('-')[0]}-`))
+              .map((ad) => ({
+                metaAdId: ad.id,
+                metaAdSetId: adSet.id,
+                name: ad.name,
+                status: ad.status ?? 'PAUSED',
+              })),
+          })),
+      })),
+      fetchedAt: new Date().toISOString(),
+    });
+  }
+
   fetchMetrics(_from: string, _to: string): Promise<MetaMetricRecord[]> {
     return Promise.resolve(
       this.metrics.map((metric) => ({
@@ -112,6 +149,43 @@ export class FixtureMetaAdsSource implements MetaAdsSource {
         leads: metric.leads,
       })),
     );
+  }
+
+  moveBudgetToCampaign(input: {
+    campaignMetaId: string;
+    adSetMetaId: string;
+    dailyBudget: number;
+  }): Promise<MetaBudgetStrategyResult> {
+    return Promise.resolve({
+      campaignMetaId: input.campaignMetaId,
+      adSetMetaId: input.adSetMetaId,
+      budgetAtCampaign: input.dailyBudget,
+      budgetAtAdSet: null,
+      campaignBudgetSharingEnabled: true,
+      notes: [
+        `[fixture] Campaña ${input.campaignMetaId} recibió daily_budget=${input.dailyBudget}.`,
+        `[fixture] Conjunto ${input.adSetMetaId} cedió su presupuesto a la campaña.`,
+      ],
+    });
+  }
+
+  keepAdSetBudget(input: {
+    campaignMetaId: string;
+    adSetMetaId: string;
+    dailyBudget: number;
+    enableAdSetBudgetSharing: boolean;
+  }): Promise<MetaBudgetStrategyResult> {
+    return Promise.resolve({
+      campaignMetaId: input.campaignMetaId,
+      adSetMetaId: input.adSetMetaId,
+      budgetAtCampaign: null,
+      budgetAtAdSet: input.dailyBudget,
+      campaignBudgetSharingEnabled: input.enableAdSetBudgetSharing,
+      notes: [
+        `[fixture] Campaña ${input.campaignMetaId} comparte presupuesto=${input.enableAdSetBudgetSharing}.`,
+        `[fixture] Conjunto ${input.adSetMetaId} mantiene daily_budget=${input.dailyBudget}.`,
+      ],
+    });
   }
 
   private ensureRecord(

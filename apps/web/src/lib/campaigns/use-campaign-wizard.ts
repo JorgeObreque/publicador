@@ -16,8 +16,10 @@ export interface CampaignWizardApi {
   reset: () => void;
 }
 
-export function useCampaignWizard(): CampaignWizardApi {
-  const [draft, setDraftState] = useState<CampaignDraft>(createEmptyDraft);
+export function useCampaignWizard(initialDraft?: CampaignDraft): CampaignWizardApi {
+  const [draft, setDraftState] = useState<CampaignDraft>(
+    () => initialDraft ?? createEmptyDraft(),
+  );
   const [stepId, setStepId] = useState<CampaignStepId>('service');
 
   const issues = useMemo(() => validateDraft(draft), [draft]);

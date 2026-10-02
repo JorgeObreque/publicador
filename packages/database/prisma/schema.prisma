@@ -9,14 +9,14 @@ datasource db {
 }
 
 model Business {
-  id              String   @id @default(cuid())
-  name            String
-  description     String?
-  location        String?
-  socialLinks     Json     @default("{}")
-  settings        Json     @default("{}")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  location    String?
+  socialLinks Json     @default("{}")
+  settings    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   services             Service[]
   campaigns            Campaign[]
@@ -34,8 +34,53 @@ model Business {
   decisionLog          DecisionLogEntry[]
   externalAppointments ExternalAppointment[]
   serviceMappings      EasyAppointmentsServiceMap[]
+  remoteCampaigns      MetaRemoteCampaign[]
+  remoteMetrics        MetaRemoteMetricDaily[]
+  profile              BusinessProfile?
+  campaignBriefs       CampaignBrief[]
+  commercialDiagnoses  CommercialDiagnosis[]
 
   @@index([name])
+}
+
+model BusinessProfile {
+  id         String   @id @default(cuid())
+  businessId String   @unique
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  addressLine    String?
+  neighborhood   String?
+  regionCutCode  String?
+  communeCutCode String?
+  countryCode    String?
+  phone          String?
+  whatsappNumber String?
+  publicEmail    String?
+  googleMapsUrl  String?
+
+  brandVoiceKeywords      String[]
+  wordsToAvoid            String[]
+  preferredEmojiSemantics String[]
+
+  primaryCustomerProfile String?
+  commonObjections       String[]
+  qualifyingQuestions    String[]
+
+  weeklyServiceCapacity  Int?
+  monthlyRevenueTarget   Decimal? @db.Decimal(12, 2)
+  monthlyAcquisitionGoal Int?
+  costPerAcquisitionCap  Decimal? @db.Decimal(12, 2)
+
+  tagline         String?
+  differentiators String[]
+
+  nearbyCommunesCutCodes String[] @default([])
+
+  profileCompletedAt DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([businessId])
 }
 
 model Service {
@@ -50,18 +95,20 @@ model Service {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  business            Business                    @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  campaigns           Campaign[]
-  conversions         Conversion[]
+  business             Business                     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  campaigns            Campaign[]
+  conversions          Conversion[]
   externalAppointments ExternalAppointment[]
-  externalServiceMaps EasyAppointmentsServiceMap[]
+  externalServiceMaps  EasyAppointmentsServiceMap[]
+  campaignBriefs       CampaignBrief[]
+  commercialDiagnoses  CommercialDiagnosis[]
 
   @@unique([businessId, name])
   @@index([businessId])
 }
 
 model MediaAsset {
-  id                String          @id @default(cuid())
+  id                String           @id @default(cuid())
   businessId        String
   source            MediaAssetSource
   kind              MediaAssetKind
@@ -78,12 +125,12 @@ model MediaAsset {
   durationSeconds   Int?
   status            MediaAssetStatus @default(READY)
   archivedAt        DateTime?
-  lastSyncedAt        DateTime        @default(now())
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  lastSyncedAt      DateTime         @default(now())
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
-  business    Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  creatives   Creative[]
+  business  Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  creatives Creative[]
 
   @@unique([businessId, source, externalFileId])
   @@index([businessId])
@@ -108,31 +155,33 @@ enum MediaAssetStatus {
 }
 
 model Campaign {
-  id             String         @id @default(cuid())
-  businessId     String
-  serviceId      String?
-  name           String
-  objective      String
-  status         CampaignStatus @default(DRAFT)
-  pausedAt       DateTime?
-  startDate      DateTime?
-  endDate        DateTime?
-  dailyBudget    Decimal?       @db.Decimal(12, 2)
-  lifetimeBudget Decimal?       @db.Decimal(12, 2)
-  metaCampaignId String?
-  metaAdSetId    String?
+  id                     String            @id @default(cuid())
+  businessId             String
+  serviceId              String?
+  name                   String
+  objective              String
+  status                 CampaignStatus    @default(DRAFT)
+  pausedAt               DateTime?
+  startDate              DateTime?
+  endDate                DateTime?
+  dailyBudget            Decimal?          @db.Decimal(12, 2)
+  lifetimeBudget         Decimal?          @db.Decimal(12, 2)
+  metaCampaignId         String?
+  metaAdSetId            String?
   metaPublishFingerprint String?
-  metaPublishStatus MetaPublishStatus @default(DRAFT)
-  metaPublishAttemptId String?
-  metaPublishError String?
-  metaPublishStartedAt DateTime?
-  metaPublishedAt DateTime?
-  notes          String?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  metaPublishStatus      MetaPublishStatus @default(DRAFT)
+  metaPublishAttemptId   String?
+  metaPublishError       String?
+  metaPublishStartedAt   DateTime?
+  metaPublishedAt        DateTime?
+  notes                  String?
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
 
-  business           Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  service            Service?             @relation(fields: [serviceId], references: [id])
+  business           Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  service            Service?            @relation(fields: [serviceId], references: [id])
+  campaignBriefId    String?
+  campaignBrief      CampaignBrief?      @relation(fields: [campaignBriefId], references: [id], onDelete: SetNull)
   campaignCreatives  CampaignCreative[]
   metaEntityMappings MetaEntityMapping[]
   metrics            AdMetricDaily[]
@@ -144,6 +193,7 @@ model Campaign {
   @@index([businessId])
   @@index([businessId, status])
   @@index([serviceId])
+  @@index([campaignBriefId])
 }
 
 enum MetaPublishStatus {
@@ -159,6 +209,143 @@ enum CampaignStatus {
   ACTIVE
   COMPLETED
   ARCHIVED
+}
+
+enum CampaignBriefStatus {
+  DRAFT
+  APPROVED
+  ARCHIVED
+}
+
+model CampaignBrief {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  title  String
+  status CampaignBriefStatus @default(DRAFT)
+
+  businessObjective String
+  offer             String
+  primaryKpi        String
+
+  idealCustomerProfile String?
+  qualifyingQuestions  String[]
+
+  monthlyAcquisitionGoal Int?
+  costPerAcquisitionCap  Decimal? @db.Decimal(12, 2)
+  lifetimeBudgetCap      Decimal? @db.Decimal(12, 2)
+  dailyBudgetCap         Decimal? @db.Decimal(12, 2)
+  plannedDurationDays    Int?
+
+  constraints String[]
+
+  stopIf  String?
+  scaleIf String?
+
+  approvedAt DateTime?
+  approvedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaigns Campaign[]
+  diagnosis CommercialDiagnosis?
+
+  @@index([businessId])
+  @@index([businessId, status])
+}
+
+model CommercialDiagnosis {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  status CommercialDiagnosisStatus @default(IN_PROGRESS)
+
+  currentSituation String
+
+  serviceId String?
+  service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  // Análisis IA (nullable mientras IN_PROGRESS)
+  situation            String?
+  opportunity          String?
+  primaryGoal          String?
+  primaryConversion    String?
+  recommendedTitle     String?
+  recommendedWeeklyAdd Int?
+  availableCapacity    Int?
+
+  // Estrategia auto-precios (nullable hasta READY/ACCEPTED)
+  businessObjective        String?
+  offer                    String?
+  primaryKpi               String?
+  idealCustomerProfile     String?
+  qualifyingQuestions      String[]
+  constraints              String[]
+  stopIf                   String?
+  scaleIf                  String?
+  initialDailyBudgetCLP    Decimal? @db.Decimal(12, 2)
+  initialLifetimeBudgetCLP Decimal? @db.Decimal(12, 2)
+  initialDurationDays      Int?
+  initialCpaTargetCLP      Decimal? @db.Decimal(12, 2)
+  initialCpaCapCLP         Decimal? @db.Decimal(12, 2)
+  progressionSteps         Int[]
+
+  recommendedStartDate     DateTime?      @db.Date
+  recommendedEndDate       DateTime?      @db.Date
+  recommendedWeekdays      Int[]          @default([])
+  budgetExplanation        String?
+  scheduleExplanation      String?
+  assumptions              String[]       @default([])
+  goalAssessment           Json?
+
+  provenance Json @default("{}")
+
+  campaignBriefId String?        @unique
+  campaignBrief   CampaignBrief? @relation(fields: [campaignBriefId], references: [id], onDelete: SetNull)
+
+  answers DiagnosticAnswer[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([businessId])
+  @@index([businessId, status])
+}
+
+model DiagnosticAnswer {
+  id               String              @id @default(cuid())
+  diagnosisId      String
+  diagnosis        CommercialDiagnosis @relation(fields: [diagnosisId], references: [id], onDelete: Cascade)
+  questionKey      String
+  questionText     String
+  answerText       String?
+  wasClarification Boolean             @default(false)
+  askedAt          DateTime            @default(now())
+  answeredAt       DateTime?
+
+  @@index([diagnosisId])
+}
+
+enum CommercialDiagnosisStatus {
+  IN_PROGRESS
+  READY
+  ACCEPTED
+  ARCHIVED
+}
+
+enum CommercialDataSource {
+  USER_PROFILE
+  USER_CURRENT_SITUATION
+  AI_INFERENCE
+  SYSTEM_CALCULATION
+  AI_RECOMMENDATION
+  CAMPAIGN_OBSERVED_DATA
 }
 
 model Creative {
@@ -190,23 +377,23 @@ model Creative {
 }
 
 model CampaignCreative {
-  id              String   @id @default(cuid())
-  businessId      String
-  campaignId      String
-  creativeId      String
-  attributionCode String   @unique
-  isControl       Boolean  @default(false)
-  metaCreativeId  String?
-  metaAdId        String?
+  id                     String    @id @default(cuid())
+  businessId             String
+  campaignId             String
+  creativeId             String
+  attributionCode        String    @unique
+  isControl              Boolean   @default(false)
+  metaCreativeId         String?
+  metaAdId               String?
   metaPublishFingerprint String?
-  metaPublishedAt DateTime?
-  createdAt       DateTime @default(now())
+  metaPublishedAt        DateTime?
+  createdAt              DateTime  @default(now())
 
-  business          Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  campaign          Campaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  creative          Creative           @relation(fields: [creativeId], references: [id], onDelete: Cascade)
-  metrics           AdMetricDaily[]
-  conversions       Conversion[]
+  business           Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  campaign           Campaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  creative           Creative            @relation(fields: [creativeId], references: [id], onDelete: Cascade)
+  metrics            AdMetricDaily[]
+  conversions        Conversion[]
   experimentVariants ExperimentVariant[]
 
   @@unique([campaignId, creativeId])
@@ -233,19 +420,19 @@ model MetaAdAccount {
 }
 
 model MetaEntityMapping {
-  id          String        @id @default(cuid())
+  id          String         @id @default(cuid())
   businessId  String
   adAccountId String?
   entityType  MetaEntityType
   metaId      String
   campaignId  String?
   creativeId  String?
-  createdAt   DateTime      @default(now())
+  createdAt   DateTime       @default(now())
 
-  business   Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  adAccount  MetaAdAccount? @relation(fields: [adAccountId], references: [id])
-  campaign   Campaign?  @relation(fields: [campaignId], references: [id])
-  creative   Creative?  @relation(fields: [creativeId], references: [id])
+  business  Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  adAccount MetaAdAccount? @relation(fields: [adAccountId], references: [id])
+  campaign  Campaign?      @relation(fields: [campaignId], references: [id])
+  creative  Creative?      @relation(fields: [creativeId], references: [id])
 
   @@unique([entityType, metaId])
   @@index([businessId])
@@ -270,7 +457,7 @@ model AdMetricDaily {
   impressions        Int      @default(0)
   reach              Int      @default(0)
   clicks             Int      @default(0)
-  spend              Decimal  @db.Decimal(12, 2) @default(0)
+  spend              Decimal  @default(0) @db.Decimal(12, 2)
   leads              Int      @default(0)
   createdAt          DateTime @default(now())
 
@@ -285,17 +472,17 @@ model AdMetricDaily {
 }
 
 model TrackingEvent {
-  id                 String           @id @default(cuid())
-  businessId         String
-  eventType          TrackingEventType
-  eventId            String
-  source             String?
-  medium             String?
-  campaign           String?
-  utmCampaignId      String?
+  id                    String            @id @default(cuid())
+  businessId            String
+  eventType             TrackingEventType
+  eventId               String
+  source                String?
+  medium                String?
+  campaign              String?
+  utmCampaignId         String?
   utmCampaignCreativeId String?
-  occurredAt         DateTime         @default(now())
-  payload            Json             @default("{}")
+  occurredAt            DateTime          @default(now())
+  payload               Json              @default("{}")
 
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
@@ -311,22 +498,22 @@ enum TrackingEventType {
 }
 
 model Conversion {
-  id                     String           @id @default(cuid())
-  businessId             String
-  campaignId             String?
-  creativeId             String?
-  campaignCreativeId     String?
-  serviceId              String?
-  attributionCode        String?
-  status                 ConversionStatus @default(PENDING)
-  amount                 Decimal?         @db.Decimal(12, 2)
-  currency               String           @default("CLP")
-  contactRef             String?
-  notes                  String?
-  externalAppointmentId  String?
-  occurredAt             DateTime         @default(now())
-  createdAt              DateTime         @default(now())
-  updatedAt              DateTime         @updatedAt
+  id                    String           @id @default(cuid())
+  businessId            String
+  campaignId            String?
+  creativeId            String?
+  campaignCreativeId    String?
+  serviceId             String?
+  attributionCode       String?
+  status                ConversionStatus @default(PENDING)
+  amount                Decimal?         @db.Decimal(12, 2)
+  currency              String           @default("CLP")
+  contactRef            String?
+  notes                 String?
+  externalAppointmentId String?
+  occurredAt            DateTime         @default(now())
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
 
   business            Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
   campaign            Campaign?            @relation(fields: [campaignId], references: [id])
@@ -353,20 +540,20 @@ enum ConversionStatus {
 }
 
 model Experiment {
-  id          String            @id @default(cuid())
-  businessId  String
-  campaignId  String
-  name        String
-  hypothesis  String
-  primaryKpi  String
-  status      ExperimentStatus  @default(RUNNING)
-  startedAt   DateTime          @default(now())
-  endedAt     DateTime?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  id         String           @id @default(cuid())
+  businessId String
+  campaignId String
+  name       String
+  hypothesis String
+  primaryKpi String
+  status     ExperimentStatus @default(RUNNING)
+  startedAt  DateTime         @default(now())
+  endedAt    DateTime?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
 
-  business Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  campaign Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  business Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  campaign Campaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   variants ExperimentVariant[]
   insights Insight[]
 
@@ -398,15 +585,15 @@ model ExperimentVariant {
 }
 
 model Insight {
-  id           String         @id @default(cuid())
+  id           String          @id @default(cuid())
   businessId   String
   experimentId String?
   category     String
   severity     InsightSeverity @default(INFO)
   title        String
   description  String
-  evidence     Json           @default("{}")
-  createdAt    DateTime       @default(now())
+  evidence     Json            @default("{}")
+  createdAt    DateTime        @default(now())
 
   business   Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
   experiment Experiment? @relation(fields: [experimentId], references: [id])
@@ -422,7 +609,7 @@ enum InsightSeverity {
 }
 
 model OptimizationRecommendation {
-  id            String   @id @default(cuid())
+  id            String               @id @default(cuid())
   businessId    String
   category      String
   title         String
@@ -430,8 +617,8 @@ model OptimizationRecommendation {
   impact        String
   status        RecommendationStatus @default(PENDING)
   decisionLogId String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
 
   business    Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
   decisionLog DecisionLogEntry? @relation(fields: [decisionLogId], references: [id])
@@ -448,24 +635,24 @@ enum RecommendationStatus {
 }
 
 model DecisionLogEntry {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   businessId     String
   title          String
   rationale      String
   expectedImpact String?
   outcome        String?
-  decidedAt      DateTime @default(now())
+  decidedAt      DateTime  @default(now())
   evaluatedAt    DateTime?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
 
-  business        Business                       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business        Business                     @relation(fields: [businessId], references: [id], onDelete: Cascade)
   recommendations OptimizationRecommendation[]
 
   @@index([businessId, decidedAt])
 }
 
 model ExternalAppointment {
-  id                    String           @id @default(cuid())
+  id                    String            @id @default(cuid())
   businessId            String
   serviceId             String?
   externalAppointmentId BigInt
@@ -479,19 +666,19 @@ model ExternalAppointment {
   campaignId            String?
   creativeId            String?
   campaignCreativeId    String?
-  depositConfirmed      Boolean          @default(false)
-  depositAmount         Decimal?         @db.Decimal(12, 2)
+  depositConfirmed      Boolean           @default(false)
+  depositAmount         Decimal?          @db.Decimal(12, 2)
   depositCurrency       String?
   outcome               ConversionStatus?
-  finalRevenue          Decimal?         @db.Decimal(12, 2)
+  finalRevenue          Decimal?          @db.Decimal(12, 2)
   finalRevenueCurrency  String?
-  rawPayload            Json             @default("{}")
-  syncedAt              DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
+  rawPayload            Json              @default("{}")
+  syncedAt              DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
 
-  business    Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  service     Service?     @relation(fields: [serviceId], references: [id])
-  conversion  Conversion[]
+  business   Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  service    Service?     @relation(fields: [serviceId], references: [id])
+  conversion Conversion[]
 
   @@unique([businessId, externalAppointmentId])
   @@index([businessId, scheduledStart])
@@ -499,13 +686,58 @@ model ExternalAppointment {
   @@index([serviceId])
 }
 
+model MetaRemoteMetricDaily {
+  id             String   @id @default(cuid())
+  businessId     String
+  metaCampaignId String
+  metaAdSetId    String?
+  metaAdId       String?
+  adSetName      String?
+  adName         String?
+  date           DateTime
+  impressions    Int      @default(0)
+  clicks         Int      @default(0)
+  spend          Decimal  @default(0) @db.Decimal(12, 2)
+  leads          Int      @default(0)
+  fetchedAt      DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, metaCampaignId, metaAdId, date])
+  @@index([businessId])
+  @@index([businessId, metaCampaignId])
+  @@index([businessId, date])
+  @@index([businessId, metaCampaignId, metaAdSetId])
+}
+
+model MetaRemoteCampaign {
+  id              String    @id @default(cuid())
+  businessId      String
+  metaCampaignId  String
+  name            String
+  status          String
+  effectiveStatus String?
+  objective       String?
+  dailyBudget     String?
+  lifetimeBudget  String?
+  startTime       DateTime?
+  stopTime        DateTime?
+  fetchedAt       DateTime  @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, metaCampaignId])
+  @@index([businessId])
+  @@index([businessId, status])
+}
+
 model EasyAppointmentsServiceMap {
-  id               String   @id @default(cuid())
-  businessId       String
+  id                String   @id @default(cuid())
+  businessId        String
   externalServiceId Int
-  serviceId        String
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  serviceId         String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   service  Service  @relation(fields: [serviceId], references: [id])

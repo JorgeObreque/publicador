@@ -13,6 +13,15 @@ export interface Campaign {
   objective: string;
   status: CampaignStatus;
   serviceId: string | null;
+  /**
+   * P1-4: las campañas se crean siempre desde un `CampaignBrief`
+   * aprobado. Este campo puede ser `null` en campañas legacy (huérfanas)
+   * creadas antes del guardrail y a las que `list` ya filtra; el detalle
+   * (`GET /campaigns/:id`) las sigue exponiendo por compatibilidad
+   * interna. La UI lo usa para mostrar el breadcrumb "Planes comerciales
+   * › [plan] › [ejecución]".
+   */
+  campaignBriefId?: string | null;
   dailyBudget: string | null;
   lifetimeBudget: string | null;
   startDate: string | null;

@@ -5,6 +5,7 @@ import type { CampaignDraft } from '@/lib/campaigns/wizard';
 import { issueForField } from '@/lib/campaigns/wizard';
 import type { ValidationIssue } from '@/lib/campaigns/wizard';
 import { formatServicePrice } from '@/lib/services/format';
+import { FieldShell } from '@/components/forms/FieldShell';
 
 interface Props {
   services: ServiceSummary[];
@@ -26,7 +27,7 @@ export function ServiceStep({ services, draft, issues, onChange, onNext }: Props
           Elige el servicio y un nombre interno para identificar esta campaña.
         </p>
       </header>
-      <FieldShell label="Nombre de la campaña" error={nameError}>
+      <FieldShell id="service-name" label="Nombre de la campaña" error={nameError}>
         <input
           type="text"
           value={draft.name}
@@ -36,7 +37,7 @@ export function ServiceStep({ services, draft, issues, onChange, onNext }: Props
           maxLength={120}
         />
       </FieldShell>
-      <FieldShell label="Servicio a promocionar" error={serviceError}>
+      <FieldShell id="service-select" label="Servicio a promocionar" error={serviceError}>
         <select
           value={draft.serviceId ?? ''}
           onChange={(event) =>
@@ -52,7 +53,10 @@ export function ServiceStep({ services, draft, issues, onChange, onNext }: Props
           ))}
         </select>
       </FieldShell>
-      <FieldShell label="Notas internas (opcional)" error={undefined}>
+      <FieldShell
+        id="service-notes"
+        label="Notas (opcional)"
+      >
         <textarea
           value={draft.notes}
           onChange={(event) => onChange((current) => ({ ...current, notes: event.target.value }))}
@@ -78,24 +82,6 @@ export function ServiceStep({ services, draft, issues, onChange, onNext }: Props
   );
 }
 
-function FieldShell({
-  label,
-  error,
-  children,
-}: {
-  label: string;
-  error: string | undefined;
-  children: React.ReactNode;
-}) {
-  return (
-    <label style={{ display: 'grid', gap: '0.35rem' }}>
-      <span>{label}</span>
-      {children}
-      {error && <span style={errorMessageStyle}>{error}</span>}
-    </label>
-  );
-}
-
 const inputStyle = {
   padding: '0.6rem 0.75rem',
   borderRadius: '8px',
@@ -111,9 +97,4 @@ const primaryButtonStyle = {
   color: '#ffffff',
   fontSize: '1rem',
   cursor: 'pointer',
-} as const;
-
-const errorMessageStyle = {
-  color: '#991b1b',
-  fontSize: '0.85rem',
 } as const;

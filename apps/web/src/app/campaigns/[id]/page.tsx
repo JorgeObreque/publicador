@@ -1,8 +1,10 @@
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import {
   getCampaign,
   summarizeCampaign,
 } from '@/lib/campaigns/api';
+import { getCampaignBrief } from '@/lib/campaign-brief/api';
 import type { Campaign, CampaignSummary } from '@/lib/campaigns/types';
 import { displayStatus } from '@/lib/campaigns/status';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -48,12 +50,38 @@ export default async function CampaignDetailPage({ params }: PageProps) {
     );
   }
 
+  let breadcrumbBrief: { id: string; title: string } | null = null;
+  if (campaign.campaignBriefId) {
+    try {
+      const brief = await getCampaignBrief(campaign.campaignBriefId);
+      breadcrumbBrief = { id: brief.id, title: brief.title };
+    } catch {
+      breadcrumbBrief = null;
+    }
+  }
+
   const status = displayStatus(campaign);
   const insights = summary ? summarizeInsights(summary) : null;
   const hasCreatives = (campaign.campaignCreatives?.length ?? 0) > 0;
 
   return (
     <section style={{ display: 'grid', gap: '1.5rem' }}>
+      <nav
+        aria-label="Ruta de navegación"
+        style={{ fontSize: '0.85rem', color: '#52606d', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}
+      >
+        <Link href="/campaign-brief" style={{ color: '#52606d' }}>Planes comerciales</Link>
+        <span aria-hidden="true">›</span>
+        {breadcrumbBrief ? (
+          <Link href={`/campaign-brief/${breadcrumbBrief.id}`} style={{ color: '#52606d' }}>
+            {breadcrumbBrief.title}
+          </Link>
+        ) : (
+          <span>(sin plan vinculado)</span>
+        )}
+        <span aria-hidden="true">›</span>
+        <span style={{ color: '#1f2933', fontWeight: 600 }}>{campaign.name}</span>
+      </nav>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h2 style={{ margin: 0 }}>{campaign.name}</h2>
